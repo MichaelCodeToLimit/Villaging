@@ -47,6 +47,19 @@ class ConversationTest {
 	}
 
 	@Test
+	void wordsSpokenThroughTheSayToolAreRemembered() {
+		com.google.gson.JsonObject args = new com.google.gson.JsonObject();
+		args.addProperty("text", "Right away, my king!");
+		List<ChatMessage> produced = List.of(
+				ChatMessage.user("mine that"),
+				ChatMessage.assistant("", List.of(
+						new com.villaging.ai.ToolCall("1", "say", args),
+						new com.villaging.ai.ToolCall("2", "mine_block", new com.google.gson.JsonObject()))));
+		VillagerBrain brain = Conversation.withReplies(SMART, produced, false);
+		assertEquals(List.of("me: Right away, my king!"), brain.memory());
+	}
+
+	@Test
 	void cancelledRunNeverWritesAReplyAfterTheNewerCommand() {
 		VillagerBrain afterNewCommand = Conversation.withKingMessage(Conversation.withKingMessage(SMART, "A"), "B");
 		List<ChatMessage> producedByCancelledA = List.of(ChatMessage.user("A"), ChatMessage.assistant("late reply to A", List.of()));

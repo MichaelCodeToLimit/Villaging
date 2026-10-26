@@ -53,11 +53,15 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 	public void runTest(ClientGameTestContext context) {
 		// Stands in for a claims/protection mod: nobody may break the block at (9, 100, 9).
 		PlayerBlockBreakEvents.BEFORE.register((level, player, pos, state, entity) -> !(pos.getX() == 9 && pos.getY() == 100 && pos.getZ() == 9));
-		String realModel = System.getenv("VILLAGING_REAL_MODEL");
+		// Opt-in real-model runs: VILLAGING_REAL_MODEL=<ollama model> or VILLAGING_GEMINI_KEY=<key> (never stored in the repo).
+		String geminiKey = System.getenv("VILLAGING_GEMINI_KEY");
+		String realModel = geminiKey != null ? "gemini" : System.getenv("VILLAGING_REAL_MODEL");
 		try {
 			ollama = new FakeOllama();
 			String config = realModel == null
 					? "{\"provider\":\"ollama\",\"ollamaUrl\":\"" + ollama.url() + "\",\"ollamaModel\":\"fake\",\"callsPerMinute\":100}"
+					: geminiKey != null
+					? "{\"provider\":\"gemini\",\"apiKey\":\"" + geminiKey + "\",\"callsPerMinute\":100}"
 					: "{\"provider\":\"ollama\",\"ollamaModel\":\"" + realModel + "\",\"callsPerMinute\":100}";
 			Files.writeString(FabricLoader.getInstance().getConfigDir().resolve("villaging.json"), config);
 		} catch (IOException e) {
@@ -424,7 +428,7 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 			context.waitTicks(10);
 			context.runOnClient(mc -> ClientPlayNetworking.send(new CommandPayload(id, phrase)));
 			try {
-				server.waitFor(srv -> VillagerBrains.get(v).memory().size() > before, 3000);
+				server.waitFor(srv -> VillagerBrains.get(v).memory().size() > before + 1, 3000);
 				context.waitTicks(100);
 			} catch (AssertionError timeout) {
 				System.out.println("[villaging-real] TIMEOUT waiting for the model on: " + phrase);

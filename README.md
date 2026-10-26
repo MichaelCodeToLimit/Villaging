@@ -15,13 +15,18 @@ crafting, combat, ranks and chains of command are the next sub-projects (see `do
 
    **Cloud (Claude).** Set `"provider": "cloud"` and put your key in `"apiKey"`. Never share this file.
 
+   **Google Gemini.** Set `"provider": "gemini"` and put your Google AI key in `"apiKey"`. The default model is
+   `gemini-3.5-flash` (change it with `"geminiModel"`). Free keys have low request limits, so a busy villager may
+   answer "I can't think right now" until the limit resets.
+
    **Local (Ollama).** Install Ollama, `ollama pull` a model that supports tools, then set
    `"provider": "ollama"` and `"ollamaModel": "<name>"` (default URL `http://localhost:11434`).
 
 | Option | Default | Meaning |
 |---|---|---|
-| `provider` | `cloud` | `cloud` or `ollama` |
-| `apiKey` | empty | cloud key |
+| `provider` | `cloud` | `cloud`, `gemini` or `ollama` |
+| `apiKey` | empty | key for `cloud` or `gemini` (never share this file) |
+| `geminiModel` / `geminiUrl` | `gemini-3.5-flash` / `https://generativelanguage.googleapis.com` | Gemini model and base URL |
 | `model` | `claude-sonnet-5-5` | cloud model |
 | `cloudUrl` | `https://api.anthropic.com` | cloud base URL |
 | `ollamaUrl` / `ollamaModel` | `http://localhost:11434` / `llama3.1:8b` | local model |
@@ -49,6 +54,7 @@ If it cannot do something yet it says so and offers the closest thing.
 ./gradlew build
 ```
 
-Optional real-model check: set `VILLAGING_REAL_MODEL=<ollama model>` before `runClientGameTest`.
+Optional real-model checks before `runClientGameTest`: `VILLAGING_REAL_MODEL=<ollama model>` or
+`VILLAGING_GEMINI_KEY=<key>` (the key is only read from the environment, never stored in the repo).
 
 Not yet supported: protected-area mods (the mod only refuses to break bedrock and chests that hold items).

@@ -12,6 +12,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
+import java.util.function.LongConsumer;
 
 /**
  * Sends the king's message to the model, runs the tool calls it asks for, feeds the results back,
@@ -23,6 +24,7 @@ public final class AgentLoop {
 	public static final String NO_ANSWER = "I'm not sure what to say, my king.";
 	public static final String TOO_BUSY = "Give me a moment to catch my breath.";
 	private static final long ACTION_TIMEOUT_SECONDS = 120;
+	private static final long RETRY_DELAY_MILLIS = 1500;
 
 	public interface Handle {
 		void cancel();
@@ -31,6 +33,8 @@ public final class AgentLoop {
 	private final AiProvider provider;
 	private final int maxSteps;
 	private final BooleanSupplier callPermit;
+	private final long retryDelayMillis;
+	private final LongConsumer sleeper;
 
 	public AgentLoop(AiProvider provider, int maxSteps) {
 		this(provider, maxSteps, () -> true);
@@ -38,9 +42,25 @@ public final class AgentLoop {
 
 	/** @param callPermit asked before every model call (including the retry); false stops the loop politely */
 	public AgentLoop(AiProvider provider, int maxSteps, BooleanSupplier callPermit) {
+		this(provider, maxSteps, callPermit, RETRY_DELAY_MILLIS, AgentLoop::sleep);
+	}
+
+	/** @param retryDelayMillis how long to wait before the one retry (overloaded services need a moment) */
+	public AgentLoop(AiProvider provider, int maxSteps, BooleanSupplier callPermit, long retryDelayMillis,
+			LongConsumer sleeper) {
 		this.provider = provider;
 		this.maxSteps = maxSteps;
 		this.callPermit = callPermit;
+		this.retryDelayMillis = retryDelayMillis;
+		this.sleeper = sleeper;
+	}
+
+	private static void sleep(long millis) {
+		try {
+			Thread.sleep(millis);
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+		}
 	}
 
 	/**
@@ -149,6 +169,9 @@ public final class AgentLoop {
 				}
 				if (cancelled) {
 					return null;
+				}
+				if (attempt == 0) {
+					sleeper.accept(retryDelayMillis);
 				}
 			}
 			return null;

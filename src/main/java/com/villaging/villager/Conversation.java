@@ -36,8 +36,18 @@ public final class Conversation {
 		}
 		VillagerBrain updated = brain;
 		for (ChatMessage m : produced) {
-			if (m.role() == ChatMessage.Role.ASSISTANT && !m.text().isBlank()) {
+			if (m.role() != ChatMessage.Role.ASSISTANT) {
+				continue;
+			}
+			if (!m.text().isBlank()) {
 				updated = updated.withMemory(SELF_PREFIX + m.text());
+			}
+			// Many models speak through the say tool instead of plain text; those words are the villager's too.
+			for (var call : m.toolCalls()) {
+				var text = call.args() == null ? null : call.args().get("text");
+				if (call.name().equals("say") && text != null && text.isJsonPrimitive() && !text.getAsString().isBlank()) {
+					updated = updated.withMemory(SELF_PREFIX + text.getAsString());
+				}
 			}
 		}
 		return updated;

@@ -82,8 +82,8 @@ class AgentLoopTest {
 	private final List<List<ChatMessage>> finished = new ArrayList<>();
 
 	private AgentLoop.Handle run(AiProvider provider, int maxSteps, FakeExecutor exec) {
-		return new AgentLoop(provider, maxSteps).start("sys", List.of(), "hello", exec, replies::add, finished::add,
-				Runnable::run);
+		return new AgentLoop(provider, maxSteps, () -> true, 0, millis -> {}).start("sys", List.of(), "hello", exec,
+				replies::add, finished::add, Runnable::run);
 	}
 
 	@Test
@@ -137,6 +137,25 @@ class AgentLoopTest {
 		assertEquals(2, provider.calls());
 		assertEquals(List.of(AgentLoop.CANT_THINK), replies);
 		assertEquals(1, finished.size());
+	}
+
+	@Test
+	void retryWaitsBeforeTheSecondAttempt() {
+		Scripted provider = new Scripted(new AiException("busy"), text("Back."));
+		List<Long> waits = new ArrayList<>();
+		new AgentLoop(provider, 20, () -> true, 1500, waits::add).start("sys", List.of(), "hi", new FakeExecutor(),
+				replies::add, finished::add, Runnable::run);
+		assertEquals(List.of(1500L), waits);
+		assertEquals(List.of("Back."), replies);
+	}
+
+	@Test
+	void noWaitWhenTheFirstAttemptSucceeds() {
+		Scripted provider = new Scripted(text("Fine."));
+		List<Long> waits = new ArrayList<>();
+		new AgentLoop(provider, 20, () -> true, 1500, waits::add).start("sys", List.of(), "hi", new FakeExecutor(),
+				replies::add, finished::add, Runnable::run);
+		assertTrue(waits.isEmpty());
 	}
 
 	@Test
