@@ -1,0 +1,16 @@
+{
+	"type": "minecraft:crafting_shaped",
+	"category": "equipment",
+	"key": {
+		"G": "minecraft:gold_ingot",
+		"D": "minecraft:diamond"
+	},
+	"pattern": [
+		"GGG",
+		"GDG"
+	],
+	"result": {
+		"id": "villaging:crown",
+		"count": 1
+	}
+}
