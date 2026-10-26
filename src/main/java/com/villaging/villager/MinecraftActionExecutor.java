@@ -53,7 +53,7 @@ public final class MinecraftActionExecutor implements ActionExecutor {
 						new GoToAction(args.get("x").getAsDouble(), args.get("y").getAsDouble(), args.get("z").getAsDouble())),
 						result);
 				case "mine_block" -> chain(ActionManager.INSTANCE.run(villager,
-						new MineAction(new BlockPos(args.get("x").getAsInt(), args.get("y").getAsInt(), args.get("z").getAsInt()))),
+						new MineAction(new BlockPos(args.get("x").getAsInt(), args.get("y").getAsInt(), args.get("z").getAsInt()), kingId)),
 						result);
 				default -> result.complete("failed: unknown tool " + call.name());
 			}

@@ -1,5 +1,6 @@
 package com.villaging.ai;
 
+import com.villaging.Villaging;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -9,6 +10,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
 /**
@@ -18,6 +20,8 @@ import java.util.function.Consumer;
  */
 public final class AgentLoop {
 	public static final String CANT_THINK = "I can't think right now.";
+	public static final String NO_ANSWER = "I'm not sure what to say, my king.";
+	public static final String TOO_BUSY = "Give me a moment to catch my breath.";
 	private static final long ACTION_TIMEOUT_SECONDS = 120;
 
 	public interface Handle {
@@ -26,14 +30,21 @@ public final class AgentLoop {
 
 	private final AiProvider provider;
 	private final int maxSteps;
+	private final BooleanSupplier callPermit;
 
 	public AgentLoop(AiProvider provider, int maxSteps) {
+		this(provider, maxSteps, () -> true);
+	}
+
+	/** @param callPermit asked before every model call (including the retry); false stops the loop politely */
+	public AgentLoop(AiProvider provider, int maxSteps, BooleanSupplier callPermit) {
 		this.provider = provider;
 		this.maxSteps = maxSteps;
+		this.callPermit = callPermit;
 	}
 
 	/**
-	 * @param onReply called with each non-blank assistant text (and CANT_THINK on unrecoverable failure)
+	 * @param onReply called with each non-blank assistant text (and a short apology on failure)
 	 * @param onFinished called exactly once with the messages produced by this run (user message first)
 	 * @param runOn executor the loop body runs on; never the main game thread
 	 */
@@ -53,6 +64,8 @@ public final class AgentLoop {
 		private final Consumer<List<ChatMessage>> onFinished;
 		private volatile boolean cancelled;
 		private volatile CompletableFuture<String> pending;
+		private boolean denied;
+		private boolean acted;
 
 		Run(String system, List<ChatMessage> history, String userMessage, ActionExecutor exec,
 				Consumer<String> onReply, Consumer<List<ChatMessage>> onFinished) {
@@ -79,19 +92,20 @@ public final class AgentLoop {
 			try {
 				for (int step = 0; step < maxSteps && !cancelled && exec.isAlive(); step++) {
 					AiResponse response = callProvider(produced);
-					if (response == null) {
-						if (!cancelled) {
-							onReply.accept(CANT_THINK);
-						}
-						break;
-					}
 					if (cancelled) {
 						break;
 					}
+					if (response == null) {
+						reply(denied ? TOO_BUSY : CANT_THINK);
+						break;
+					}
 					if (!response.text().isBlank()) {
-						onReply.accept(response.text());
+						reply(response.text());
 					}
 					if (response.text().isBlank() && response.toolCalls().isEmpty()) {
+						if (!acted) {
+							reply(NO_ANSWER);
+						}
 						break;
 					}
 					produced.add(ChatMessage.assistant(response.text(), response.toolCalls()));
@@ -100,23 +114,38 @@ public final class AgentLoop {
 					}
 					for (ToolCall call : response.toolCalls()) {
 						String result = runTool(call);
-						com.villaging.Villaging.LOGGER.info("Villager tool {} {} -> {}", call.name(), call.args(), result);
+						acted = true;
+						Villaging.LOGGER.info("Villager tool {} {} -> {}", call.name(), call.args(), result);
 						produced.add(ChatMessage.toolResult(call.id(), result));
 					}
+				}
+			} catch (RuntimeException e) {
+				Villaging.LOGGER.error("Villager agent loop crashed", e);
+				if (!cancelled) {
+					reply(CANT_THINK);
 				}
 			} finally {
 				onFinished.accept(List.copyOf(produced));
 			}
 		}
 
+		private void reply(String text) {
+			acted = true;
+			onReply.accept(text);
+		}
+
 		private AiResponse callProvider(List<ChatMessage> produced) {
 			List<ChatMessage> messages = new ArrayList<>(history);
 			messages.addAll(produced);
 			for (int attempt = 0; attempt < 2; attempt++) {
+				if (!callPermit.getAsBoolean()) {
+					denied = true;
+					return null;
+				}
 				try {
 					return provider.complete(system, messages, Tools.all());
-				} catch (AiException e) {
-					com.villaging.Villaging.LOGGER.warn("AI call failed (attempt {}): {}", attempt + 1, e.getMessage());
+				} catch (AiException | RuntimeException e) {
+					Villaging.LOGGER.warn("AI call failed (attempt {}): {}", attempt + 1, e.getMessage());
 				}
 				if (cancelled) {
 					return null;

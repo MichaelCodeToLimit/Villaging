@@ -147,11 +147,41 @@ class AgentLoopTest {
 	}
 
 	@Test
-	void emptyResponseEndsLoopSilently() {
+	void emptyFirstResponseTellsTheKingInsteadOfStayingSilent() {
 		Scripted provider = new Scripted(text(""));
 		run(provider, 20, new FakeExecutor());
-		assertTrue(replies.isEmpty());
+		assertEquals(List.of(AgentLoop.NO_ANSWER), replies);
 		assertEquals(1, provider.calls());
+		assertEquals(1, finished.size());
+	}
+
+	@Test
+	void emptyResponseAfterActionsStaysSilent() {
+		Scripted provider = new Scripted(tool("t1", "stop"), text(""));
+		run(provider, 20, new FakeExecutor());
+		assertTrue(replies.isEmpty());
+		assertEquals(2, provider.calls());
+	}
+
+	@Test
+	void unexpectedProviderExceptionSaysCantThinkInsteadOfDyingSilently() {
+		AiProvider broken = (system, messages, tools) -> {
+			throw new IllegalStateException("parse blew up");
+		};
+		run(broken, 20, new FakeExecutor());
+		assertEquals(List.of(AgentLoop.CANT_THINK), replies);
+		assertEquals(1, finished.size());
+	}
+
+	@Test
+	void callPermitDeniedStopsTheLoopWithAPoliteMessage() {
+		Scripted provider = new Scripted(tool("t", "stop"));
+		FakeExecutor exec = new FakeExecutor();
+		int[] permits = {2};
+		new AgentLoop(provider, 20, () -> permits[0]-- > 0).start("sys", List.of(), "go", exec, replies::add,
+				finished::add, Runnable::run);
+		assertEquals(2, provider.calls());
+		assertEquals(List.of(AgentLoop.TOO_BUSY), replies);
 		assertEquals(1, finished.size());
 	}
 

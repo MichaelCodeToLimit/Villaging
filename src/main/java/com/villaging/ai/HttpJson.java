@@ -21,13 +21,20 @@ final class HttpJson {
 
 	static JsonObject post(String url, Map<String, String> headers, JsonObject body, Duration timeout)
 			throws AiException {
-		HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url)).timeout(timeout)
-				.header("content-type", "application/json")
-				.POST(HttpRequest.BodyPublishers.ofString(body.toString()));
-		headers.forEach(builder::header);
+		HttpRequest request;
+		try {
+			HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url)).timeout(timeout)
+					.header("content-type", "application/json")
+					.POST(HttpRequest.BodyPublishers.ofString(body.toString()));
+			headers.forEach(builder::header);
+			request = builder.build();
+		} catch (IllegalArgumentException e) {
+			// Deliberately no cause or detail: the message could echo the API key.
+			throw new AiException("The AI service URL or API key in config/villaging.json is not valid.");
+		}
 		HttpResponse<String> response;
 		try {
-			response = CLIENT.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+			response = CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
 		} catch (IOException e) {
 			throw new AiException("Could not reach the AI service: " + e, e);
 		} catch (InterruptedException e) {

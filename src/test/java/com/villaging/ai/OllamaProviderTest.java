@@ -97,6 +97,26 @@ class OllamaProviderTest {
 	}
 
 	@Test
+	void malformedToolCallsThrowAiExceptionInsteadOfRuntimeExceptions() throws Exception {
+		for (String body : List.of(
+				"{\"message\":{\"tool_calls\":[{\"function\":{}}]}}",
+				"{\"message\":{\"tool_calls\":[{\"function\":\"oops\"}]}}",
+				"{\"message\":{\"content\":{\"not\":\"a string\"}}}")) {
+			try (FakeHttpServer server = new FakeHttpServer(200, body)) {
+				assertThrows(AiException.class,
+						() -> new OllamaProvider(server.url(), "m").complete("s", List.of(ChatMessage.user("hi")), Tools.all()),
+						body);
+			}
+		}
+	}
+
+	@Test
+	void urlWithoutSchemeThrowsAiException() {
+		assertThrows(AiException.class,
+				() -> new OllamaProvider("localhost:11434", "m").complete("s", List.of(ChatMessage.user("hi")), Tools.all()));
+	}
+
+	@Test
 	void missingMessageGivesEmptyResponse() throws Exception {
 		try (FakeHttpServer server = new FakeHttpServer(200, "{}")) {
 			AiResponse r = new OllamaProvider(server.url(), "m").complete("s", List.of(ChatMessage.user("hi")), Tools.all());

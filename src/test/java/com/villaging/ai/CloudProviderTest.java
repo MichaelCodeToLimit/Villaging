@@ -116,6 +116,31 @@ class CloudProviderTest {
 	}
 
 	@Test
+	void badUrlThrowsAiExceptionWithoutLeakingTheKey() {
+		AiException e = assertThrows(AiException.class,
+				() -> new CloudProvider("not a url", "SECRET-KEY-123", "m").complete("s", List.of(ChatMessage.user("hi")), tools()));
+		assertTrue(!String.valueOf(e.getMessage()).contains("SECRET-KEY-123"));
+	}
+
+	@Test
+	void keyWithIllegalHeaderCharactersThrowsAiExceptionWithoutLeakingTheKey() throws Exception {
+		try (FakeHttpServer server = new FakeHttpServer(200, TEXT_ONLY)) {
+			AiException e = assertThrows(AiException.class,
+					() -> new CloudProvider(server.url(), "bad\nkey-SECRET", "m").complete("s", List.of(ChatMessage.user("hi")), tools()));
+			assertTrue(!String.valueOf(e.getMessage()).contains("key-SECRET"));
+		}
+	}
+
+	@Test
+	void toolUseWithoutNameThrowsAiException() throws Exception {
+		String body = "{\"content\":[{\"type\":\"tool_use\",\"id\":\"x\"}]}";
+		try (FakeHttpServer server = new FakeHttpServer(200, body)) {
+			assertThrows(AiException.class,
+					() -> new CloudProvider(server.url(), "k", "m").complete("s", List.of(ChatMessage.user("hi")), tools()));
+		}
+	}
+
+	@Test
 	void timeoutThrowsAiException() throws Exception {
 		try (FakeHttpServer server = new FakeHttpServer(200, TEXT_ONLY, 1500)) {
 			assertThrows(AiException.class, () -> new CloudProvider(server.url(), "k", "m", Duration.ofMillis(200))

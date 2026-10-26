@@ -9,6 +9,8 @@ import com.villaging.villager.ActionManager;
 import com.villaging.villager.FollowAction;
 import com.villaging.villager.GoToAction;
 import com.villaging.villager.MineAction;
+import com.villaging.villager.SpeechBubble;
+import com.villaging.villager.VillagerSpeech;
 import com.villaging.villager.VillagerAction;
 import com.villaging.villager.VillagerBrain;
 import com.villaging.villager.VillagerBrains;
@@ -23,6 +25,7 @@ import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestServerContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
+import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
 import net.fabricmc.fabric.api.event.player.UseEntityCallback;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.core.BlockPos;
@@ -48,6 +51,8 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 
 	@Override
 	public void runTest(ClientGameTestContext context) {
+		// Stands in for a claims/protection mod: nobody may break the block at (9, 100, 9).
+		PlayerBlockBreakEvents.BEFORE.register((level, player, pos, state, entity) -> !(pos.getX() == 9 && pos.getY() == 100 && pos.getZ() == 9));
 		String realModel = System.getenv("VILLAGING_REAL_MODEL");
 		try {
 			ollama = new FakeOllama();
@@ -80,6 +85,10 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 			attempt("follow_me keeps the villager near the king", () -> follow(server));
 			attempt("stop cancels the running action", () -> stop(server));
 			attempt("a villager removed mid-action fails cleanly", () -> removedMidAction(server));
+			attempt("the crown works through the real click hook (vanilla trading would eat it otherwise)", () -> crownViaClickHook(server));
+			attempt("mine_block refuses in adventure mode", () -> mineProtectedAdventure(server));
+			attempt("mine_block honours another mod vetoing the break", () -> mineVetoed(server));
+			attempt("speech bubble text never stays as the villager name", () -> bubbleRestored(server));
 			attempt("sneak-click on a smart villager opens the chat screen", () -> sneakClick(context, server));
 			attempt("typing in the chat screen drives the villager end to end", () -> endToEnd(context, server));
 			attempt("a command from a non-king is ignored", () -> forgedPacket(context, server));
@@ -208,7 +217,7 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 		BlockPos target = new BlockPos(4, 100, 0);
 		server.runOnServer(srv -> srv.overworld().setBlockAndUpdate(target, Blocks.STONE.defaultBlockState()));
 		Villager v = spawnVillager(server, 0, 100, 0);
-		String result = awaitResult(server, startAction(server, v, new MineAction(target)), 1200);
+		String result = awaitResult(server, startAction(server, v, new MineAction(target, playerId(server))), 1200);
 		require(result.startsWith("ok: mined"), "expected ok: mined, got " + result);
 		require(server.computeOnServer(srv -> srv.overworld().getBlockState(target).isAir()), "stone is still there");
 		server.waitFor(srv -> !srv.overworld().getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class,
@@ -221,7 +230,7 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 		BlockPos target = new BlockPos(4, 100, 0);
 		server.runOnServer(srv -> srv.overworld().setBlockAndUpdate(target, block.defaultBlockState()));
 		Villager v = spawnVillager(server, 0, 100, 0);
-		String result = awaitResult(server, startAction(server, v, new MineAction(target)), 400);
+		String result = awaitResult(server, startAction(server, v, new MineAction(target, playerId(server))), 400);
 		require(result.startsWith("failed") && result.contains(expected), "expected failure containing '" + expected + "', got " + result);
 		if (block != Blocks.AIR) {
 			require(server.computeOnServer(srv -> srv.overworld().getBlockState(target).is(block)), "block was changed");
@@ -233,7 +242,7 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 		server.runCommand("setblock 4 100 0 minecraft:chest");
 		server.runCommand("item replace block 4 100 0 container.0 with minecraft:diamond 3");
 		Villager v = spawnVillager(server, 0, 100, 0);
-		String result = awaitResult(server, startAction(server, v, new MineAction(new BlockPos(4, 100, 0))), 400);
+		String result = awaitResult(server, startAction(server, v, new MineAction(new BlockPos(4, 100, 0), playerId(server))), 400);
 		require(result.equals("failed: container has items"), "expected container refusal, got " + result);
 		require(server.computeOnServer(srv -> srv.overworld().getBlockState(new BlockPos(4, 100, 0)).is(Blocks.CHEST)), "chest was broken");
 	}
@@ -265,6 +274,70 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 		server.waitFor(srv -> far.isDone(), 100);
 		require(far.isCompletedExceptionally(), "future should complete exceptionally when the villager is gone");
 		require(!server.computeOnServer(srv -> ActionManager.isControlled(v)), "removed villager still controlled");
+	}
+
+	private void crownViaClickHook(TestServerContext server) {
+		resetArena(server);
+		makeKing(server);
+		Villager v = spawnVillager(server, 0, 100, 0);
+		InteractionResult result = server.computeOnServer(srv -> {
+			ServerPlayer p = srv.getPlayerList().getPlayers().get(0);
+			p.setShiftKeyDown(false);
+			p.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(ModItems.CROWN));
+			InteractionResult r = UseEntityCallback.EVENT.invoker().interact(p, p.level(), InteractionHand.MAIN_HAND, v, null);
+			p.setItemInHand(InteractionHand.MAIN_HAND, ItemStack.EMPTY);
+			return r;
+		});
+		require(result == InteractionResult.SUCCESS_SERVER, "crown click should be handled before trading, got " + result);
+		require(server.computeOnServer(srv -> VillagerBrains.get(v).smart()), "villager did not become smart through the click hook");
+	}
+
+	private void mineProtectedAdventure(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		BlockPos target = new BlockPos(4, 100, 0);
+		server.runOnServer(srv -> srv.overworld().setBlockAndUpdate(target, Blocks.STONE.defaultBlockState()));
+		server.runCommand("gamemode adventure @p");
+		try {
+			Villager v = spawnVillager(server, 0, 100, 0);
+			String result = awaitResult(server, startAction(server, v, new MineAction(target, playerId(server))), 400);
+			require(result.startsWith("failed") && result.contains("protected"), "expected a protection refusal, got " + result);
+			require(server.computeOnServer(srv -> srv.overworld().getBlockState(target).is(Blocks.STONE)), "stone was mined anyway");
+		} finally {
+			server.runCommand("gamemode creative @p");
+		}
+	}
+
+	private void mineVetoed(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		BlockPos target = new BlockPos(9, 100, 9);
+		server.runOnServer(srv -> srv.overworld().setBlockAndUpdate(target, Blocks.STONE.defaultBlockState()));
+		Villager v = spawnVillager(server, 8, 100, 8);
+		String result = awaitResult(server, startAction(server, v, new MineAction(target, playerId(server))), 400);
+		require(result.startsWith("failed") && result.contains("protect"), "expected a veto refusal, got " + result);
+		require(server.computeOnServer(srv -> srv.overworld().getBlockState(target).is(Blocks.STONE)), "vetoed block was mined");
+	}
+
+	private void bubbleRestored(TestServerContext server) {
+		resetArena(server);
+		makeKing(server);
+		Villager v = spawnVillager(server, 0, 100, 0);
+		server.runOnServer(srv -> VillagerBrains.set(v, VillagerBrain.DEFAULT.makeSmart("Alma")));
+		UUID me = playerId(server);
+		server.runOnServer(srv -> VillagerSpeech.say(srv, v, me, "Right away, my king!"));
+		require(server.computeOnServer(srv -> v.getCustomName().getString()).contains("Right away"), "bubble was not shown");
+		server.runOnServer(srv -> VillagerSpeech.clear());
+		require("Alma".equals(server.computeOnServer(srv -> v.getCustomName().getString())),
+				"name was not restored when the server stopped");
+		// A name left behind by an older crash heals when the villager loads again.
+		server.runOnServer(srv -> v.setCustomName(net.minecraft.network.chat.Component.literal(SpeechBubble.format("stale"))));
+		server.runOnServer(srv -> VillagerSpeech.heal(v));
+		require("Alma".equals(server.computeOnServer(srv -> v.getCustomName().getString())), "stale bubble was not healed");
+		// A name the player chose is left alone.
+		server.runOnServer(srv -> v.setCustomName(net.minecraft.network.chat.Component.literal("Sir Bob")));
+		server.runOnServer(srv -> VillagerSpeech.heal(v));
+		require("Sir Bob".equals(server.computeOnServer(srv -> v.getCustomName().getString())), "a player-chosen name was overwritten");
 	}
 
 	private void sneakClick(ClientGameTestContext context, TestServerContext server) {

@@ -44,6 +44,14 @@ public class CrownItem extends Item {
 		if (player.level().isClientSide() || !(player instanceof ServerPlayer sp)) {
 			return InteractionResult.SUCCESS;
 		}
+		return applyToVillager(sp, villager);
+	}
+
+	/**
+	 * Makes the villager smart if the player is king. Vanilla lets a villager's own interaction (trading) consume
+	 * the click before the held item is consulted, so the mod's click hook calls this directly as well.
+	 */
+	public static InteractionResult applyToVillager(ServerPlayer sp, Villager villager) {
 		if (!Kings.isKing(sp.level().getServer(), sp.getUUID())) {
 			sp.sendSystemMessage(Component.literal("Only the king may use this."));
 			return InteractionResult.FAIL;

@@ -1,6 +1,9 @@
 package com.villaging.villager;
 
+import java.util.UUID;
+import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
 import net.minecraft.core.BlockPos;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.Container;
 import net.minecraft.world.InteractionHand;
@@ -21,12 +24,16 @@ public final class MineAction implements VillagerAction {
 	private static final int START_GRACE_TICKS = 40;
 
 	private final BlockPos pos;
+	private final UUID kingId;
 	private int ticks;
 	private int mined;
 	private int needed = -1;
+	private boolean protectionChecked;
 
-	public MineAction(BlockPos pos) {
+	/** @param kingId the king the villager works for; protection is checked as if the king broke the block */
+	public MineAction(BlockPos pos, UUID kingId) {
 		this.pos = pos;
+		this.kingId = kingId;
 	}
 
 	@Override
@@ -56,6 +63,14 @@ public final class MineAction implements VillagerAction {
 			return Status.failed("container has items");
 		}
 
+		if (!protectionChecked) {
+			String protection = protectionProblem(level, state, entity);
+			if (protection != null) {
+				return Status.failed(protection);
+			}
+			protectionChecked = true;
+		}
+
 		Vec3 center = Vec3.atCenterOf(pos);
 		if (villager.getEyePosition().distanceTo(center) > REACH) {
 			PathNavigation nav = villager.getNavigation();
@@ -80,6 +95,10 @@ public final class MineAction implements VillagerAction {
 		level.destroyBlockProgress(villager.getId(), pos, Math.min(9, mined * 10 / needed));
 		if (mined >= needed) {
 			level.destroyBlockProgress(villager.getId(), pos, -1);
+			String changed = protectionProblem(level, state, entity);
+			if (changed != null) {
+				return Status.failed(changed);
+			}
 			String name = state.getBlock().getName().getString();
 			level.destroyBlock(pos, true, villager, 512);
 			return Status.done("mined " + name);
@@ -93,5 +112,20 @@ public final class MineAction implements VillagerAction {
 		if (villager.level() instanceof ServerLevel level) {
 			level.destroyBlockProgress(villager.getId(), pos, -1);
 		}
+	}
+
+	/** Null when the block may be broken; otherwise why not. Applies the same rules as if the king broke it. */
+	private String protectionProblem(ServerLevel level, BlockState state, BlockEntity entity) {
+		ServerPlayer king = level.getServer().getPlayerList().getPlayer(kingId);
+		if (king == null) {
+			return "the king is not here to authorise that";
+		}
+		if (!king.getAbilities().mayBuild || !level.mayInteract(king, pos) || !level.getWorldBorder().isWithinBounds(pos)) {
+			return "that area is protected";
+		}
+		if (!PlayerBlockBreakEvents.BEFORE.invoker().beforeBlockBreak(level, king, pos, state, entity)) {
+			return "something is protecting that block";
+		}
+		return null;
 	}
 }

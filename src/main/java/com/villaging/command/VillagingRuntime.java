@@ -5,22 +5,26 @@ import com.villaging.ai.AgentLoop;
 import com.villaging.ai.AiProvider;
 import com.villaging.ai.ChatMessage;
 import com.villaging.ai.ProviderFactory;
+import com.villaging.ai.RateLimiter;
 import com.villaging.ai.SystemPrompt;
 import com.villaging.command.CommandService.CommandResult;
 import com.villaging.command.CommandService.VillagerStatus;
 import com.villaging.config.VillagingConfig;
 import com.villaging.king.KingContextReader;
 import com.villaging.king.Kings;
+import com.villaging.villager.Conversation;
 import com.villaging.villager.MinecraftActionExecutor;
 import com.villaging.villager.VillagerBrain;
 import com.villaging.villager.VillagerBrains;
 import com.villaging.villager.VillagerSpeech;
 import com.villaging.villager.VillagerState;
-import java.util.ArrayList;
+import java.util.Map;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
@@ -29,8 +33,6 @@ import net.minecraft.world.entity.npc.villager.Villager;
 
 /** Per-server glue: owns the AI provider, the background threads and the {@link CommandService}. */
 public final class VillagingRuntime implements CommandService.Backend {
-	private static final String KING_PREFIX = "king: ";
-	private static final String SELF_PREFIX = "me: ";
 
 	private final MinecraftServer server;
 	private final VillagingConfig config;
@@ -38,6 +40,7 @@ public final class VillagingRuntime implements CommandService.Backend {
 	private final String configProblem;
 	private final ExecutorService aiThreads;
 	private final CommandService service;
+	private final Map<UUID, RateLimiter> modelCallLimiters = new ConcurrentHashMap<>();
 
 	public VillagingRuntime(MinecraftServer server, VillagingConfig config) {
 		this.server = server;
@@ -122,37 +125,29 @@ public final class VillagingRuntime implements CommandService.Backend {
 		VillagerBrain brain = VillagerBrains.get(villager);
 
 		String system = SystemPrompt.build(brain, VillagerState.describe(villager), KingContextReader.read(king));
-		List<ChatMessage> history = historyFrom(brain);
+		// History excludes the new message (it is passed separately); the message is stored right away
+		// so a quick follow-up command always sees the earlier ones in the order they were given.
+		List<ChatMessage> history = Conversation.historyFrom(brain);
+		VillagerBrains.set(villager, Conversation.withKingMessage(brain, message));
+
 		MinecraftActionExecutor executor = new MinecraftActionExecutor(server, villager, player, config.actionRange());
+		RateLimiter limiter = modelCallLimiters.computeIfAbsent(villager.getUUID(),
+				id -> new RateLimiter(config.callsPerMinute(), System::nanoTime));
+		AtomicBoolean cancelled = new AtomicBoolean();
 
-		return new AgentLoop(provider, config.maxSteps()).start(system, history, message, executor,
+		AgentLoop.Handle inner = new AgentLoop(provider, config.maxSteps(), limiter::tryAcquire).start(system, history,
+				message, executor,
 				reply -> server.execute(() -> VillagerSpeech.say(server, villager, player, reply)),
-				produced -> server.execute(() -> remember(villager, message, produced)),
+				produced -> server.execute(() -> {
+					if (!villager.isRemoved()) {
+						VillagerBrains.set(villager,
+								Conversation.withReplies(VillagerBrains.get(villager), produced, cancelled.get()));
+					}
+				}),
 				aiThreads);
-	}
-
-	private static List<ChatMessage> historyFrom(VillagerBrain brain) {
-		List<ChatMessage> history = new ArrayList<>();
-		for (String line : brain.memory()) {
-			if (line.startsWith(KING_PREFIX)) {
-				history.add(ChatMessage.user(line.substring(KING_PREFIX.length())));
-			} else if (line.startsWith(SELF_PREFIX) && !history.isEmpty()) {
-				history.add(ChatMessage.assistant(line.substring(SELF_PREFIX.length()), List.of()));
-			}
-		}
-		return history;
-	}
-
-	private static void remember(Villager villager, String kingMessage, List<ChatMessage> produced) {
-		if (villager.isRemoved()) {
-			return;
-		}
-		VillagerBrain brain = VillagerBrains.get(villager).withMemory(KING_PREFIX + kingMessage);
-		for (ChatMessage m : produced) {
-			if (m.role() == ChatMessage.Role.ASSISTANT && !m.text().isBlank()) {
-				brain = brain.withMemory(SELF_PREFIX + m.text());
-			}
-		}
-		VillagerBrains.set(villager, brain);
+		return () -> {
+			cancelled.set(true);
+			inner.cancel();
+		};
 	}
 }

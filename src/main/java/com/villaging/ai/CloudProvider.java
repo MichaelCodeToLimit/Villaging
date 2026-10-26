@@ -46,7 +46,11 @@ public final class CloudProvider implements AiProvider {
 		}
 		JsonObject response = HttpJson.post(baseUrl + "/v1/messages",
 				Map.of("x-api-key", apiKey, "anthropic-version", "2023-06-01"), body, timeout);
-		return parse(response);
+		try {
+			return parse(response);
+		} catch (RuntimeException e) {
+			throw new AiException("AI service response had an unexpected shape.", e);
+		}
 	}
 
 	private static JsonArray encodeMessages(List<ChatMessage> messages) {

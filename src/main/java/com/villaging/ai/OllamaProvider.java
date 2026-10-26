@@ -56,7 +56,11 @@ public final class OllamaProvider implements AiProvider {
 			body.add("tools", toolArray);
 		}
 		JsonObject response = HttpJson.post(baseUrl + "/api/chat", Map.of(), body, timeout);
-		return parse(response);
+		try {
+			return parse(response);
+		} catch (RuntimeException e) {
+			throw new AiException("AI service response had an unexpected shape.", e);
+		}
 	}
 
 	private static JsonObject message(String role, String content) {
