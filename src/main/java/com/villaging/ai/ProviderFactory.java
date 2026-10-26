@@ -13,6 +13,7 @@ public final class ProviderFactory {
 		}
 		return switch (config.provider()) {
 			case "ollama" -> new OllamaProvider(config.ollamaUrl(), config.ollamaModel());
+			case "gemini" -> new GeminiProvider(config.geminiUrl(), config.apiKey(), config.geminiModel());
 			default -> new CloudProvider(config.cloudUrl(), config.apiKey(), config.model());
 		};
 	}

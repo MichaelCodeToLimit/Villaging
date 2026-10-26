@@ -11,7 +11,19 @@ class ProviderFactoryTest {
 	private static VillagingConfig with(String provider, String apiKey) {
 		VillagingConfig d = VillagingConfig.defaults();
 		return new VillagingConfig(provider, apiKey, d.model(), d.cloudUrl(), d.ollamaUrl(), d.ollamaModel(),
-				d.maxSteps(), d.callsPerMinute(), d.actionRange());
+				d.geminiModel(), d.geminiUrl(), d.maxSteps(), d.callsPerMinute(), d.actionRange());
+	}
+
+	@Test
+	void factoryPicksGeminiWhenConfigured() {
+		assertInstanceOf(GeminiProvider.class, ProviderFactory.create(with("gemini", "key")));
+	}
+
+	@Test
+	void geminiWithoutKeyIsRejectedWithTheFixHint() {
+		IllegalStateException e = assertThrows(IllegalStateException.class,
+				() -> ProviderFactory.create(with("gemini", "")));
+		assertTrue(e.getMessage().contains("apiKey"));
 	}
 
 	@Test

@@ -14,6 +14,8 @@ public record VillagingConfig(
 		String cloudUrl,
 		String ollamaUrl,
 		String ollamaModel,
+		String geminiModel,
+		String geminiUrl,
 		int maxSteps,
 		int callsPerMinute,
 		int actionRange) {
@@ -22,7 +24,8 @@ public record VillagingConfig(
 
 	public static VillagingConfig defaults() {
 		return new VillagingConfig("cloud", "", "claude-sonnet-5-5", "https://api.anthropic.com",
-				"http://localhost:11434", "llama3.1:8b", 20, 10, 64);
+				"http://localhost:11434", "llama3.1:8b", "gemini-3.5-flash", "https://generativelanguage.googleapis.com",
+				20, 10, 64);
 	}
 
 	public static VillagingConfig load(Path file) {
@@ -44,6 +47,8 @@ public record VillagingConfig(
 					orDefault(raw.cloudUrl, defaults.cloudUrl),
 					orDefault(raw.ollamaUrl, defaults.ollamaUrl),
 					orDefault(raw.ollamaModel, defaults.ollamaModel),
+					orDefault(raw.geminiModel, defaults.geminiModel),
+					orDefault(raw.geminiUrl, defaults.geminiUrl),
 					raw.maxSteps != null && raw.maxSteps > 0 ? raw.maxSteps : defaults.maxSteps,
 					raw.callsPerMinute != null && raw.callsPerMinute > 0 ? raw.callsPerMinute : defaults.callsPerMinute,
 					raw.actionRange != null && raw.actionRange > 0 ? raw.actionRange : defaults.actionRange);
@@ -61,8 +66,9 @@ public record VillagingConfig(
 	public String problem() {
 		return switch (provider) {
 			case "cloud" -> apiKey.isBlank() ? "Set \"apiKey\" in config/villaging.json to use the cloud AI." : "";
+			case "gemini" -> apiKey.isBlank() ? "Set \"apiKey\" in config/villaging.json to use Gemini." : "";
 			case "ollama" -> ollamaUrl.isBlank() ? "Set \"ollamaUrl\" in config/villaging.json." : "";
-			default -> "Unknown \"provider\" \"" + provider + "\" in config/villaging.json; use \"cloud\" or \"ollama\".";
+			default -> "Unknown \"provider\" \"" + provider + "\" in config/villaging.json; use \"cloud\", \"gemini\" or \"ollama\".";
 		};
 	}
 
@@ -77,6 +83,8 @@ public record VillagingConfig(
 		String cloudUrl;
 		String ollamaUrl;
 		String ollamaModel;
+		String geminiModel;
+		String geminiUrl;
 		Integer maxSteps;
 		Integer callsPerMinute;
 		Integer actionRange;

@@ -57,6 +57,19 @@ class VillagingConfigTest {
 	}
 
 	@Test
+	void geminiDefaultsAndKeyRequirement() throws Exception {
+		Path file = dir.resolve("villaging.json");
+		Files.writeString(file, "{\"provider\":\"gemini\"}");
+		VillagingConfig config = VillagingConfig.load(file);
+		assertEquals("gemini-3.5-flash", config.geminiModel());
+		assertEquals("https://generativelanguage.googleapis.com", config.geminiUrl());
+		assertFalse(config.isUsable());
+		assertTrue(config.problem().contains("apiKey"));
+		Files.writeString(file, "{\"provider\":\"gemini\",\"apiKey\":\"k\"}");
+		assertTrue(VillagingConfig.load(file).isUsable());
+	}
+
+	@Test
 	void unknownProviderIsNotUsable() throws Exception {
 		Path file = dir.resolve("villaging.json");
 		Files.writeString(file, "{\"provider\":\"banana\"}");
