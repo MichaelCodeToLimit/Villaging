@@ -1,0 +1,21 @@
+{
+	"schemaVersion": 1,
+	"id": "villaging",
+	"version": "${version}",
+	"name": "Villaging",
+	"description": "Smart AI villagers that serve the king and can do anything a player can.",
+	"authors": ["micha"],
+	"license": "MIT",
+	"icon": "assets/villaging/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": ["com.villaging.Villaging"],
+		"client": ["com.villaging.client.VillagingClient"]
+	},
+	"depends": {
+		"fabricloader": ">=0.20.1",
+		"minecraft": "~26.2",
+		"java": ">=25",
+		"fabric-api": "*"
+	}
+}
