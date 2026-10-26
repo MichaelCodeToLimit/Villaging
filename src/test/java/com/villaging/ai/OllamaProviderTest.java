@@ -79,6 +79,24 @@ class OllamaProviderTest {
 	}
 
 	@Test
+	void stripsSpecialTokenArtifactsFromContent() throws Exception {
+		String body = "{\"message\":{\"content\":\"<|channel>Je suis là, Sire.<channel|>\"}}";
+		try (FakeHttpServer server = new FakeHttpServer(200, body)) {
+			AiResponse r = new OllamaProvider(server.url(), "m").complete("s", List.of(ChatMessage.user("hi")), Tools.all());
+			assertEquals("Je suis là, Sire.", r.text());
+		}
+	}
+
+	@Test
+	void keepsLegitimateAngleBracketText() throws Exception {
+		String body = "{\"message\":{\"content\":\"I <3 villages and <b>bold</b> ideas\"}}";
+		try (FakeHttpServer server = new FakeHttpServer(200, body)) {
+			AiResponse r = new OllamaProvider(server.url(), "m").complete("s", List.of(ChatMessage.user("hi")), Tools.all());
+			assertEquals("I <3 villages and <b>bold</b> ideas", r.text());
+		}
+	}
+
+	@Test
 	void missingMessageGivesEmptyResponse() throws Exception {
 		try (FakeHttpServer server = new FakeHttpServer(200, "{}")) {
 			AiResponse r = new OllamaProvider(server.url(), "m").complete("s", List.of(ChatMessage.user("hi")), Tools.all());

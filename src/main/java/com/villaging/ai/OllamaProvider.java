@@ -103,6 +103,14 @@ public final class OllamaProvider implements AiProvider {
 						args != null && args.isJsonObject() ? args.getAsJsonObject() : new JsonObject()));
 			}
 		}
-		return new AiResponse(text, calls);
+		return new AiResponse(stripSpecialTokens(text), calls);
 	}
+
+	/** Some local models leak template tokens such as {@code <channel|>} into their text. */
+	private static String stripSpecialTokens(String text) {
+		return TEMPLATE_TOKEN.matcher(text).replaceAll("").strip();
+	}
+
+	private static final java.util.regex.Pattern TEMPLATE_TOKEN =
+			java.util.regex.Pattern.compile("<\\|[A-Za-z_]+\\|?>|<[A-Za-z_]+\\|>");
 }

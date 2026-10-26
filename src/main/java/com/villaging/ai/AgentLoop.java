@@ -99,7 +99,9 @@ public final class AgentLoop {
 						break;
 					}
 					for (ToolCall call : response.toolCalls()) {
-						produced.add(ChatMessage.toolResult(call.id(), runTool(call)));
+						String result = runTool(call);
+						com.villaging.Villaging.LOGGER.info("Villager tool {} {} -> {}", call.name(), call.args(), result);
+						produced.add(ChatMessage.toolResult(call.id(), result));
 					}
 				}
 			} finally {

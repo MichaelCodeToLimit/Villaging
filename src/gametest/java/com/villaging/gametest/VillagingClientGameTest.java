@@ -48,10 +48,13 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 
 	@Override
 	public void runTest(ClientGameTestContext context) {
+		String realModel = System.getenv("VILLAGING_REAL_MODEL");
 		try {
 			ollama = new FakeOllama();
-			Files.writeString(FabricLoader.getInstance().getConfigDir().resolve("villaging.json"),
-					"{\"provider\":\"ollama\",\"ollamaUrl\":\"" + ollama.url() + "\",\"ollamaModel\":\"fake\",\"callsPerMinute\":100}");
+			String config = realModel == null
+					? "{\"provider\":\"ollama\",\"ollamaUrl\":\"" + ollama.url() + "\",\"ollamaModel\":\"fake\",\"callsPerMinute\":100}"
+					: "{\"provider\":\"ollama\",\"ollamaModel\":\"" + realModel + "\",\"callsPerMinute\":100}";
+			Files.writeString(FabricLoader.getInstance().getConfigDir().resolve("villaging.json"), config);
 		} catch (IOException e) {
 			throw new RuntimeException(e);
 		}
@@ -59,6 +62,14 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 		try (TestSingleplayerContext world = context.worldBuilder().create()) {
 			TestServerContext server = world.getServer();
 			prepareArena(server);
+			if (realModel != null) {
+				attempt("real model understands free-form phrasing", () -> realModel(context, server));
+				ollama.close();
+				if (!failures.isEmpty()) {
+					throw new AssertionError(String.join("\n", failures));
+				}
+				return;
+			}
 			attempt("crown claims kingship and makes villagers smart", () -> crown(server));
 			attempt("go_to reaches the target", () -> goTo(server));
 			attempt("go_to to an unreachable spot fails cleanly", () -> goToUnreachable(server));
@@ -309,6 +320,52 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 		require(brain.memory().contains("me: I have arrived, my king."), "memory missing reply: " + brain.memory());
 		require(server.computeOnServer(srv -> v.getCustomName() != null), "villager should show a name or bubble");
 		context.takeScreenshot("villaging-after-walk");
+	}
+
+	/** Opt-in (VILLAGING_REAL_MODEL=<ollama model>): sends varied phrasings to a real model and logs what happened. */
+	private void realModel(ClientGameTestContext context, TestServerContext server) throws Exception {
+		String[] phrases = {
+				"yo come with me",
+				"folow me plz",
+				"how are you doing?",
+				"what can you do?",
+				"mine that block",
+				"go stand over there",
+				"build me a castle",
+				"mine something",
+				"viens avec moi",
+		};
+		String only = System.getenv("VILLAGING_REAL_ONLY");
+		for (String phrase : phrases) {
+			if (only != null && !phrase.contains(only)) {
+				continue;
+			}
+			resetArena(server);
+			makeKing(server);
+			server.runCommand("setblock 0 101 6 minecraft:stone");
+			server.runCommand("tp @p 0 100 2 0 2");
+			Villager v = spawnVillager(server, 1, 100, 2.5);
+			server.runOnServer(srv -> VillagerBrains.set(v, VillagerBrain.DEFAULT.makeSmart("Alma")));
+			int id = server.computeOnServer(srv -> v.getId());
+			int before = server.computeOnServer(srv -> VillagerBrains.get(v).memory().size());
+			context.waitTicks(10);
+			context.runOnClient(mc -> ClientPlayNetworking.send(new CommandPayload(id, phrase)));
+			try {
+				server.waitFor(srv -> VillagerBrains.get(v).memory().size() > before, 3000);
+				context.waitTicks(100);
+			} catch (AssertionError timeout) {
+				System.out.println("[villaging-real] TIMEOUT waiting for the model on: " + phrase);
+			}
+			String summary = server.computeOnServer(srv -> {
+				VillagerBrain b = VillagerBrains.get(v);
+				ServerPlayer p = srv.getPlayerList().getPlayers().get(0);
+				return "dbg[rot=" + p.getXRot() + "/" + p.getYRot() + " eye=" + p.getEyePosition() + " hit=" + p.pick(20.0, 1.0f, false) + " type=" + p.pick(20.0, 1.0f, false).getType() + "] kingContext=[" + com.villaging.king.KingContextReader.read(p) + "] reply=" + b.memory().stream().filter(l -> l.startsWith("me: ")).toList()
+						+ " | controlled=" + ActionManager.isControlled(v)
+						+ " | distToKing=" + String.format("%.1f", v.distanceTo(p))
+						+ " | stoneStillThere=" + srv.overworld().getBlockState(new BlockPos(0, 101, 6)).is(Blocks.STONE);
+			});
+			System.out.println("[villaging-real] \"" + phrase + "\" -> " + summary);
+		}
 	}
 
 	private void forgedPacket(ClientGameTestContext context, TestServerContext server) throws Exception {
