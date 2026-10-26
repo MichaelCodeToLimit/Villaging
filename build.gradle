@@ -86,3 +86,13 @@ publishing {
 		// retrieving dependencies.
 	}
 }
+
+fabricApi {
+	configureTests {
+		createSourceSet = true
+		modId = "villaging-gametest"
+		enableGameTests = false
+		enableClientGameTests = true
+		eula = true
+	}
+}

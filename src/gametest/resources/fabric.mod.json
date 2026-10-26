@@ -1,0 +1,13 @@
+{
+	"schemaVersion": 1,
+	"id": "villaging-gametest",
+	"version": "1.0.0",
+	"name": "Villaging game tests",
+	"environment": "*",
+	"entrypoints": {
+		"fabric-client-gametest": ["com.villaging.gametest.VillagingClientGameTest"]
+	},
+	"depends": {
+		"villaging": "*"
+	}
+}

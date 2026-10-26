@@ -6,6 +6,8 @@ import net.minecraft.world.entity.npc.villager.Villager;
 public final class GoToAction implements VillagerAction {
 	private static final double SPEED = 0.6;
 	private static final int TIMEOUT_TICKS = 600;
+	/** A villager that is mid-air cannot path yet; give it a moment before calling the target unreachable. */
+	private static final int START_GRACE_TICKS = 40;
 	private static final int MAX_REPATHS = 3;
 
 	private final double x;
@@ -13,6 +15,7 @@ public final class GoToAction implements VillagerAction {
 	private final double z;
 	private int ticks;
 	private int repaths;
+	private boolean everStarted;
 
 	public GoToAction(double x, double y, double z) {
 		this.x = x;
@@ -25,21 +28,17 @@ public final class GoToAction implements VillagerAction {
 		if (distanceTo(villager) <= 2.0) {
 			return Status.done("arrived");
 		}
-		if (ticks++ == 0) {
-			if (!villager.getNavigation().moveTo(x, y, z, SPEED)) {
-				return Status.failed("there is no path to that position");
-			}
-			return Status.RUNNING;
-		}
-		if (ticks > TIMEOUT_TICKS) {
+		if (++ticks > TIMEOUT_TICKS) {
 			return Status.failed("took too long to get there");
 		}
 		if (villager.getNavigation().isDone()) {
-			if (++repaths > MAX_REPATHS) {
-				return Status.failed("got stuck on the way");
-			}
-			if (!villager.getNavigation().moveTo(x, y, z, SPEED)) {
-				return Status.failed("lost the path to that position");
+			if (villager.getNavigation().moveTo(x, y, z, SPEED)) {
+				if (everStarted && ++repaths > MAX_REPATHS) {
+					return Status.failed("got stuck on the way");
+				}
+				everStarted = true;
+			} else if (ticks > START_GRACE_TICKS) {
+				return Status.failed(everStarted ? "lost the path to that position" : "there is no path to that position");
 			}
 		}
 		return Status.RUNNING;

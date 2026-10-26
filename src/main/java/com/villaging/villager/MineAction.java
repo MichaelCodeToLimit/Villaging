@@ -17,6 +17,8 @@ public final class MineAction implements VillagerAction {
 	private static final double REACH = 4.0;
 	private static final float MAX_HARDNESS = 6.0f;
 	private static final int TIMEOUT_TICKS = 1200;
+	/** A villager that is mid-air cannot path yet; give it a moment before calling the block unreachable. */
+	private static final int START_GRACE_TICKS = 40;
 
 	private final BlockPos pos;
 	private int ticks;
@@ -59,7 +61,7 @@ public final class MineAction implements VillagerAction {
 			PathNavigation nav = villager.getNavigation();
 			if (nav.isDone() || ticks % 20 == 1) {
 				Path path = nav.createPath(pos, 1);
-				if (path == null || !nav.moveTo(path, SPEED)) {
+				if ((path == null || !nav.moveTo(path, SPEED)) && ticks > START_GRACE_TICKS) {
 					return Status.failed("I can't find a way to reach that block");
 				}
 			}
