@@ -1,0 +1,95 @@
+package com.villaging.villager;
+
+import net.minecraft.core.BlockPos;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.Container;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.ai.navigation.PathNavigation;
+import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.pathfinder.Path;
+import net.minecraft.world.phys.Vec3;
+
+/** Walk next to a block and break it by hand. */
+public final class MineAction implements VillagerAction {
+	private static final double SPEED = 0.6;
+	private static final double REACH = 4.0;
+	private static final float MAX_HARDNESS = 6.0f;
+	private static final int TIMEOUT_TICKS = 1200;
+
+	private final BlockPos pos;
+	private int ticks;
+	private int mined;
+	private int needed = -1;
+
+	public MineAction(BlockPos pos) {
+		this.pos = pos;
+	}
+
+	@Override
+	public Status tick(Villager villager) {
+		if (!(villager.level() instanceof ServerLevel level)) {
+			return Status.failed("not in a server world");
+		}
+		if (ticks++ > TIMEOUT_TICKS) {
+			return Status.failed("took too long to mine that");
+		}
+		if (!level.isLoaded(pos)) {
+			return Status.failed("that block is not loaded");
+		}
+		BlockState state = level.getBlockState(pos);
+		if (state.isAir()) {
+			return Status.failed("there is no block at " + pos.toShortString());
+		}
+		float hardness = state.getDestroySpeed(level, pos);
+		if (hardness < 0) {
+			return Status.failed("that block cannot be broken");
+		}
+		if (hardness > MAX_HARDNESS) {
+			return Status.failed("that block is too hard to mine by hand");
+		}
+		BlockEntity entity = level.getBlockEntity(pos);
+		if (entity instanceof Container container && !container.isEmpty()) {
+			return Status.failed("container has items");
+		}
+
+		Vec3 center = Vec3.atCenterOf(pos);
+		if (villager.getEyePosition().distanceTo(center) > REACH) {
+			PathNavigation nav = villager.getNavigation();
+			if (nav.isDone() || ticks % 20 == 1) {
+				Path path = nav.createPath(pos, 1);
+				if (path == null || !nav.moveTo(path, SPEED)) {
+					return Status.failed("I can't find a way to reach that block");
+				}
+			}
+			return Status.RUNNING;
+		}
+
+		villager.getNavigation().stop();
+		villager.getLookControl().setLookAt(center.x, center.y, center.z);
+		if (needed < 0) {
+			needed = Math.max(10, (int) (hardness * 30));
+		}
+		mined++;
+		if (mined % 5 == 0) {
+			villager.swing(InteractionHand.MAIN_HAND);
+		}
+		level.destroyBlockProgress(villager.getId(), pos, Math.min(9, mined * 10 / needed));
+		if (mined >= needed) {
+			level.destroyBlockProgress(villager.getId(), pos, -1);
+			String name = state.getBlock().getName().getString();
+			level.destroyBlock(pos, true, villager, 512);
+			return Status.done("mined " + name);
+		}
+		return Status.RUNNING;
+	}
+
+	@Override
+	public void cancel(Villager villager) {
+		villager.getNavigation().stop();
+		if (villager.level() instanceof ServerLevel level) {
+			level.destroyBlockProgress(villager.getId(), pos, -1);
+		}
+	}
+}
