@@ -14,6 +14,8 @@ import com.villaging.villager.VillagerSpeech;
 import com.villaging.villager.VillagerAction;
 import com.villaging.villager.VillagerBrain;
 import com.villaging.villager.VillagerBrains;
+import com.villaging.villager.VillagerInventories;
+import com.villaging.villager.VillagerInventory;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.ArrayList;
@@ -35,6 +37,7 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.npc.villager.Villager;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
@@ -89,6 +92,7 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 			attempt("follow_me keeps the villager near the king", () -> follow(server));
 			attempt("stop cancels the running action", () -> stop(server));
 			attempt("a villager removed mid-action fails cleanly", () -> removedMidAction(server));
+			attempt("a villager keeps its own saved 36-slot inventory", () -> villagerInventory(server));
 			attempt("the crown works through the real click hook (vanilla trading would eat it otherwise)", () -> crownViaClickHook(server));
 			attempt("mine_block refuses in adventure mode", () -> mineProtectedAdventure(server));
 			attempt("mine_block honours another mod vetoing the break", () -> mineVetoed(server));
@@ -321,6 +325,30 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 		String result = awaitResult(server, startAction(server, v, new MineAction(target, playerId(server))), 400);
 		require(result.startsWith("failed") && result.contains("protect"), "expected a veto refusal, got " + result);
 		require(server.computeOnServer(srv -> srv.overworld().getBlockState(target).is(Blocks.STONE)), "vetoed block was mined");
+	}
+
+	private void villagerInventory(TestServerContext server) {
+		resetArena(server);
+		Villager v = spawnVillager(server, 0, 100, 0);
+		server.runOnServer(srv -> {
+			VillagerInventory inv = VillagerInventories.get(v);
+			inv.addItem(new ItemStack(Items.OAK_LOG, 64));
+			inv.addItem(new ItemStack(Items.OAK_LOG, 10));
+			inv.addItem(new ItemStack(Items.STICK, 3));
+		});
+		require(36 == server.computeOnServer(srv -> VillagerInventories.get(v).getContainerSize()), "inventory is not 36 slots");
+		require(74 == server.computeOnServer(srv -> VillagerInventories.get(v).count(Items.OAK_LOG)), "log count wrong");
+		require(!server.computeOnServer(srv -> VillagerInventories.get(v).remove(Items.OAK_LOG, 75)), "removed more than held");
+		require(74 == server.computeOnServer(srv -> VillagerInventories.get(v).count(Items.OAK_LOG)), "failed remove changed the count");
+		require(server.computeOnServer(srv -> VillagerInventories.get(v).remove(Items.OAK_LOG, 70)), "could not remove 70");
+		require(4 == server.computeOnServer(srv -> VillagerInventories.get(v).count(Items.OAK_LOG)), "wrong remainder after remove");
+		// Saved with the villager: encode and decode through the same codec the attachment uses.
+		int after = server.computeOnServer(srv -> {
+			var ops = net.minecraft.resources.RegistryOps.create(net.minecraft.nbt.NbtOps.INSTANCE, srv.registryAccess());
+			var tag = VillagerInventory.CODEC.encodeStart(ops, VillagerInventories.get(v)).getOrThrow();
+			return VillagerInventory.CODEC.parse(ops, tag).getOrThrow().count(Items.STICK);
+		});
+		require(after == 3, "inventory did not survive saving, sticks=" + after);
 	}
 
 	private void bubbleRestored(TestServerContext server) {
