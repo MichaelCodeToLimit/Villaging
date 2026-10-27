@@ -259,8 +259,16 @@ final class CombatActions {
 					return ticks == 1 ? Status.done("there was nothing threatening nearby, so I stayed put") : Status.done("ran away");
 				}
 				Vec3 away = DefaultRandomPos.getPosAway(villager, 16, 7, threat.position());
-				if (away != null) {
-					villager.getNavigation().moveTo(away.x, away.y, away.z, 1.0);
+				if (away == null || !villager.getNavigation().moveTo(away.x, away.y, away.z, 1.0)) {
+					// No random spot worked out: run straight away from the threat instead.
+					Vec3 direction = villager.position().subtract(threat.position());
+					direction = direction.lengthSqr() < 1.0E-4 ? new Vec3(1, 0, 0) : direction.normalize();
+					for (double distance : new double[] {12, 8, 5}) {
+						Vec3 spot = villager.position().add(direction.scale(distance));
+						if (villager.getNavigation().moveTo(spot.x, spot.y, spot.z, 1.0)) {
+							break;
+						}
+					}
 				}
 			}
 			return Status.RUNNING;

@@ -15,5 +15,6 @@ public final class AbilityTools {
 		GatherTools.register();
 		CombatTools.register();
 		MoveTools.register();
+		ScriptTools.register();
 	}
 }

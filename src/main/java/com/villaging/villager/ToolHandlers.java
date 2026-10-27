@@ -36,6 +36,7 @@ public final class ToolHandlers {
 		GatherHandlers.register();
 		CombatHandlers.register();
 		MoveHandlers.register();
+		ScriptHandlers.register();
 	}
 
 	/** Registers the Foundation tools; safe to call more than once. */
@@ -46,6 +47,7 @@ public final class ToolHandlers {
 		});
 		register("stop", (ctx, args) -> {
 			ActionManager.INSTANCE.stop(ctx.villager());
+			ScriptManager.INSTANCE.cancel(ctx.villager());
 			return CompletableFuture.completedFuture("ok: stopped");
 		});
 		register("follow_me", (ctx, args) -> ActionManager.INSTANCE.run(ctx.villager(), new FollowAction(ctx.kingId())));

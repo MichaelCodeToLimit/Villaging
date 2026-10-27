@@ -140,6 +140,8 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 			attempt("shoot hits a target with a bow", () -> combatShoot(server));
 			attempt("guard protects the king and spares pets, flee runs away", () -> combatGuardAndFlee(server));
 			attempt("sit stays put and sleep lies down at night and wakes at dawn", () -> sitAndSleep(server));
+			attempt("task scripts run, fail cleanly, obey limits and stop", () -> scripts(context, server));
+			attempt("a risky step inside a script still asks the king", () -> scriptRiskyStepAsks(context, server));
 			attempt("container tools look in, fill and empty a chest", () -> containerTools(server));
 			attempt("a command from a non-king is ignored", () -> forgedPacket(context, server));
 		} finally {
@@ -944,6 +946,90 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 		server.waitFor(srv -> !v.isSleeping(), 200);
 		require(!server.computeOnServer(srv -> v.isSleeping()), "the villager did not wake at dawn");
 		require(tool(server, v, "sleep", "{\"x\":9,\"y\":100,\"z\":9}", 100).startsWith("failed"), "sleeping with no bed should fail");
+	}
+
+	private static String scriptArgs(String script) {
+		com.google.gson.JsonObject o = new com.google.gson.JsonObject();
+		o.addProperty("script", script);
+		return o.toString();
+	}
+
+	private void scripts(ClientGameTestContext context, TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		server.runCommand("setblock 3 100 0 minecraft:stone");
+		server.runCommand("setblock 4 100 0 minecraft:stone");
+		server.runCommand("setblock 5 100 0 minecraft:stone");
+		Villager v = spawnVillager(server, 0, 100, 0);
+		ollama.script(reply("unused"));
+		// Three mining steps run with no model call at all.
+		String three = tool(server, v, "run_script", scriptArgs("{\"steps\":["
+				+ "{\"tool\":\"mine_block\",\"args\":{\"x\":3,\"y\":100,\"z\":0}},"
+				+ "{\"tool\":\"mine_block\",\"args\":{\"x\":4,\"y\":100,\"z\":0}},"
+				+ "{\"tool\":\"mine_block\",\"args\":{\"x\":5,\"y\":100,\"z\":0}}]}"), 3000);
+		require(three.equals("ok: ran 3 steps"), "script said " + three);
+		for (int x = 3; x <= 5; x++) {
+			int px = x;
+			require(server.computeOnServer(srv -> srv.overworld().getBlockState(new BlockPos(px, 100, 0)).isAir()), "block " + x + " was not mined");
+		}
+		require(ollama.requests.isEmpty(), "the script called the model");
+		// A failing step stops the run and names the step.
+		server.runCommand("setblock 3 100 0 minecraft:stone");
+		server.runCommand("setblock 4 100 0 minecraft:stone");
+		String failing = tool(server, v, "run_script", scriptArgs("{\"steps\":["
+				+ "{\"tool\":\"mine_block\",\"args\":{\"x\":3,\"y\":100,\"z\":0}},"
+				+ "{\"tool\":\"mine_block\",\"args\":{\"x\":3,\"y\":100,\"z\":6}},"
+				+ "{\"tool\":\"mine_block\",\"args\":{\"x\":4,\"y\":100,\"z\":0}}]}"), 3000);
+		require(failing.startsWith("failed: step 2 mine_block") && failing.contains("no block"), "failing script said " + failing);
+		require(server.computeOnServer(srv -> srv.overworld().getBlockState(new BlockPos(4, 100, 0)).is(Blocks.STONE)), "a step ran after the failure");
+		// A script the parser rejects never starts.
+		require(tool(server, v, "run_script", scriptArgs("{\"steps\":[{\"tool\":\"fly\"}]}"), 50).startsWith("invalid:"), "unknown tool accepted");
+		require(tool(server, v, "run_script", scriptArgs("{\"steps\":[{\"tool\":\"run_script\",\"args\":{}}]}"), 50).startsWith("invalid:"), "nested script accepted");
+		// Conditions read the real world.
+		server.runOnServer(srv -> VillagerInventories.get(v).addItem(new ItemStack(Items.OAK_LOG, 5)));
+		String conditional = tool(server, v, "run_script", scriptArgs("{\"steps\":["
+				+ "{\"if\":{\"have\":{\"item\":\"minecraft:oak_log\",\"count\":5}},\"then\":[{\"tool\":\"drop\",\"args\":{\"item\":\"minecraft:oak_log\",\"count\":5}}],\"else\":[{\"tool\":\"look_around\"}]},"
+				+ "{\"if\":{\"has_block\":{\"x\":4,\"y\":100,\"z\":0}},\"then\":[{\"tool\":\"mine_block\",\"args\":{\"x\":4,\"y\":100,\"z\":0}}]}]}"), 3000);
+		require(conditional.equals("ok: ran 2 steps"), "conditional script said " + conditional);
+		require(villagerCount(server, v, Items.OAK_LOG) == 0, "the have-condition did not see the logs");
+		require(server.computeOnServer(srv -> srv.overworld().getBlockState(new BlockPos(4, 100, 0)).isAir()), "the has_block condition did not see the stone");
+		// The step limit applies.
+		String limited = tool(server, v, VillagingConfigWithScriptSteps(3), "run_script",
+				scriptArgs("{\"steps\":[{\"repeat\":10,\"steps\":[{\"tool\":\"look_around\"}]}]}"), 600);
+		require(limited.startsWith("stopped") && limited.contains("limit of 3"), "limit script said " + limited);
+		// stop ends a running script.
+		CompletableFuture<String> long1 = toolAsync(server, v, "run_script", scriptArgs("{\"steps\":[{\"repeat\":20,\"steps\":["
+				+ "{\"tool\":\"go_to\",\"args\":{\"x\":12,\"y\":100,\"z\":0}},{\"tool\":\"go_to\",\"args\":{\"x\":-12,\"y\":100,\"z\":0}}]}]}"));
+		waitTicks(server, 40);
+		require(!long1.isDone(), "the long script finished too early");
+		require(tool(server, v, "stop", "{}", 50).startsWith("ok"), "stop failed");
+		String stopped = awaitResult(server, long1, 200);
+		require(stopped.startsWith("stopped") || stopped.startsWith("failed"), "the script did not end after stop: " + stopped);
+		waitTicks(server, 20);
+		require(!server.computeOnServer(srv -> ActionManager.isControlled(v)), "the villager is still under script control after stop");
+	}
+
+	private static VillagingConfig VillagingConfigWithScriptSteps(int steps) {
+		VillagingConfig d = VillagingConfig.defaults();
+		return new VillagingConfig(d.provider(), d.apiKey(), d.model(), d.cloudUrl(), d.ollamaUrl(), d.ollamaModel(),
+				d.geminiModel(), d.geminiUrl(), d.maxSteps(), d.callsPerMinute(), d.actionRange(), d.respectProtection(),
+				d.allowBreakBedrock(), steps, d.maxScriptSeconds(), d.maxScriptDepth());
+	}
+
+	private void scriptRiskyStepAsks(ClientGameTestContext context, TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager v = spawnVillager(server, 0, 100, 0);
+		server.runOnServer(srv -> {
+			v.setNoAi(true);
+			VillagerInventories.get(v).addItem(new ItemStack(Items.TNT, 2));
+		});
+		CompletableFuture<String> run = toolAsync(server, v, "run_script", scriptArgs("{\"steps\":["
+				+ "{\"tool\":\"place_block\",\"args\":{\"item\":\"minecraft:tnt\",\"x\":3,\"y\":100,\"z\":1}}]}"));
+		answerDialog(context, "No");
+		String result = awaitResult(server, run, 300);
+		require(result.startsWith("failed: step 1 place_block") && result.contains("the king said no"), "risky script step said " + result);
+		require(server.computeOnServer(srv -> srv.overworld().getBlockState(new BlockPos(3, 100, 1)).isAir()), "TNT was placed without a yes");
 	}
 
 	private static String toolCall(String name, String argsJson) {

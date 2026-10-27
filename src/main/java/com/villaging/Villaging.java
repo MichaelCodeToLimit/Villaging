@@ -13,6 +13,7 @@ import com.villaging.ai.tools.AbilityTools;
 import com.villaging.ai.PendingQuestions;
 import com.villaging.villager.ActionManager;
 import com.villaging.villager.HandsManager;
+import com.villaging.villager.ScriptManager;
 import com.villaging.villager.VillagerBrain;
 import com.villaging.villager.VillagerBrains;
 import com.villaging.villager.VillagerInventories;
@@ -66,6 +67,7 @@ public class Villaging implements ModInitializer {
 			ActionManager.INSTANCE.clear();
 			HandsManager.clear();
 			PendingQuestions.INSTANCE.cancelAll();
+			ScriptManager.INSTANCE.cancelAll();
 			VillagerSpeech.clear();
 		});
 		ServerTickEvents.END_LEVEL_TICK.register(ActionManager.INSTANCE::tick);
@@ -112,6 +114,7 @@ public class Villaging implements ModInitializer {
 			if (entity instanceof Villager villager) {
 				HandsManager.release(villager);
 				PendingQuestions.INSTANCE.cancelFor(villager.getId());
+				ScriptManager.INSTANCE.cancel(villager);
 			}
 		});
 
