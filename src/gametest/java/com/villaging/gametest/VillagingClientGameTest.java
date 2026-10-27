@@ -127,6 +127,7 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 			attempt("use_block flips a lever", () -> useBlock(server));
 			attempt("break_area clears a box", () -> breakArea(server));
 			attempt("risky acts ask the king first and asking can be switched off", () -> riskGate(context, server));
+				attempt("item tools pick up, drop, hand over, take (with consent), equip and eat", () -> itemTools(context, server));
 			attempt("a command from a non-king is ignored", () -> forgedPacket(context, server));
 		} finally {
 			ollama.close();
@@ -545,6 +546,89 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 		require(server.computeOnServer(srv -> srv.overworld().getBlockState(new BlockPos(5, 101, 1)).isAir()), "dirt is still there");
 		require(tool(server, v, "break_area", "{\"x1\":0,\"y1\":100,\"z1\":0,\"x2\":16,\"y2\":100,\"z2\":0}", 20).startsWith("invalid:"),
 				"a 17-wide box was accepted");
+	}
+
+	/** Starts a tool without waiting, for tools that wait on the king's answer in the dialog. */
+	private static CompletableFuture<String> toolAsync(TestServerContext server, Villager v, String name, String argsJson) {
+		UUID king = playerId(server);
+		return server.computeOnServer(srv -> {
+			MinecraftActionExecutor exec = new MinecraftActionExecutor(srv, v, king, VillagingConfig.defaults());
+			ToolCall call = new ToolCall("t", name, com.google.gson.JsonParser.parseString(argsJson).getAsJsonObject());
+			Optional<String> bad = exec.validate(call);
+			return bad.isPresent() ? CompletableFuture.completedFuture("invalid: " + bad.get()) : exec.execute(call);
+		});
+	}
+
+	private static int kingCount(TestServerContext server, net.minecraft.world.item.Item item) {
+		return server.computeOnServer(srv -> {
+			int total = 0;
+			for (ItemStack s : srv.getPlayerList().getPlayers().get(0).getInventory().getNonEquipmentItems()) {
+				if (s.is(item)) {
+					total += s.getCount();
+				}
+			}
+			return total;
+		});
+	}
+
+	private static int villagerCount(TestServerContext server, Villager v, net.minecraft.world.item.Item item) {
+		return server.computeOnServer(srv -> VillagerInventories.get(v).count(item));
+	}
+
+	private void itemTools(ClientGameTestContext context, TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		server.runCommand("clear @p");
+		// pick_up
+		server.runCommand("summon minecraft:item 3 100 0 {Item:{id:\"minecraft:cobblestone\",count:4}}");
+		Villager v = spawnVillager(server, 0, 100, 0);
+		String picked = tool(server, v, "pick_up", "{\"item\":\"minecraft:cobblestone\"}", 600);
+		require(picked.startsWith("ok: picked up 4"), "pick_up said " + picked);
+		require(villagerCount(server, v, Items.COBBLESTONE) == 4, "cobblestone is not in the inventory");
+		require(tool(server, v, "pick_up", "{}", 200).startsWith("failed"), "pick_up with nothing around should fail");
+		// drop
+		String dropped = tool(server, v, "drop", "{\"item\":\"minecraft:cobblestone\",\"count\":3}", 100);
+		require(dropped.startsWith("ok: dropped 3"), "drop said " + dropped);
+		require(villagerCount(server, v, Items.COBBLESTONE) == 1, "drop did not take the items from the inventory");
+		require(tool(server, v, "drop", "{\"item\":\"minecraft:cobblestone\",\"count\":5}", 100).startsWith("failed"), "dropped more than held");
+		// give_to_king
+		server.runOnServer(srv -> VillagerInventories.get(v).addItem(new ItemStack(Items.IRON_INGOT, 6)));
+		String gave = tool(server, v, "give_to_king", "{\"item\":\"minecraft:iron_ingot\",\"count\":4}", 600);
+		require(gave.startsWith("ok: gave the king 4"), "give_to_king said " + gave);
+		require(kingCount(server, Items.IRON_INGOT) == 4 && villagerCount(server, v, Items.IRON_INGOT) == 2, "iron did not move 4 to the king");
+		// take_from_king: asks, and moves exactly the named amount only on a yes.
+		server.runCommand("give @p minecraft:gold_ingot 10");
+		CompletableFuture<String> refused = toolAsync(server, v, "take_from_king", "{\"item\":\"minecraft:gold_ingot\",\"count\":4}");
+		answerDialog(context, "No");
+		require(awaitResult(server, refused, 100).contains("the king said no"), "a no was not reported");
+		require(kingCount(server, Items.GOLD_INGOT) == 10 && villagerCount(server, v, Items.GOLD_INGOT) == 0, "items moved after a no");
+		CompletableFuture<String> allowed = toolAsync(server, v, "take_from_king", "{\"item\":\"minecraft:gold_ingot\",\"count\":4}");
+		answerDialog(context, "Yes");
+		String took = awaitResult(server, allowed, 100);
+		require(took.startsWith("ok: took 4"), "take_from_king said " + took);
+		require(kingCount(server, Items.GOLD_INGOT) == 6 && villagerCount(server, v, Items.GOLD_INGOT) == 4, "gold did not move exactly 4");
+		CompletableFuture<String> tooMany = toolAsync(server, v, "take_from_king", "{\"item\":\"minecraft:gold_ingot\",\"count\":50}");
+		answerDialog(context, "Yes");
+		require(awaitResult(server, tooMany, 100).startsWith("failed: the king only has 6"), "over-asking was not refused");
+		// equip
+		server.runOnServer(srv -> {
+			VillagerInventories.get(v).addItem(new ItemStack(Items.IRON_SWORD, 1));
+			VillagerInventories.get(v).addItem(new ItemStack(Items.IRON_HELMET, 1));
+		});
+		require(tool(server, v, "equip", "{\"item\":\"minecraft:iron_sword\"}", 50).startsWith("ok: equipped"), "equip sword failed");
+		require(tool(server, v, "equip", "{\"item\":\"minecraft:iron_helmet\"}", 50).startsWith("ok: equipped"), "equip helmet failed");
+		require(server.computeOnServer(srv -> v.getMainHandItem().is(Items.IRON_SWORD)), "sword is not in hand");
+		require(server.computeOnServer(srv -> v.getItemBySlot(net.minecraft.world.entity.EquipmentSlot.HEAD).is(Items.IRON_HELMET)), "helmet is not worn");
+		require(villagerCount(server, v, Items.IRON_SWORD) == 0, "equipped sword is still in the inventory too");
+		// eat
+		server.runOnServer(srv -> {
+			VillagerInventories.get(v).addItem(new ItemStack(Items.APPLE, 2));
+			v.setHealth(10);
+		});
+		require(tool(server, v, "eat", "{}", 50).startsWith("ok: ate"), "eat failed");
+		require(server.computeOnServer(srv -> v.getHealth()) > 10, "eating did not heal");
+		require(villagerCount(server, v, Items.APPLE) == 1, "an apple was not used up");
+		require(tool(server, v, "use_item", "{\"item\":\"minecraft:diamond_pickaxe\"}", 50).contains("don't have"), "use_item of an unheld item");
 	}
 
 	private static String toolCall(String name, String argsJson) {

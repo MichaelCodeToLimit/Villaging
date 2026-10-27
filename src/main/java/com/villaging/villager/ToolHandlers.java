@@ -30,6 +30,7 @@ public final class ToolHandlers {
 		AskHandlers.register();
 		LookHandlers.register();
 		WorldHandlers.register();
+		ItemHandlers.register();
 	}
 
 	/** Registers the Foundation tools; safe to call more than once. */

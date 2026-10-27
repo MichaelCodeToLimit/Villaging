@@ -9,5 +9,6 @@ public final class AbilityTools {
 		AskTools.register();
 		LookTools.register();
 		WorldTools.register();
+		ItemTools.register();
 	}
 }
