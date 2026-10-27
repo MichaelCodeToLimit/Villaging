@@ -37,4 +37,17 @@ class AskToolsTest {
 		long count = Tools.all().stream().map(ToolDef::name).filter("set_ask_preference"::equals).count();
 		assertEquals(1, count);
 	}
+
+	@Test
+	void askNeedsAQuestionAndAtMostFourShortOptions() {
+		assertEquals(Optional.empty(), validate("ask", "{\"question\":\"Which chest?\",\"options\":[\"Left\",\"Right\"]}"));
+		assertEquals(Optional.empty(), validate("ask", "{\"question\":\"Sure?\"}"));
+		assertTrue(validate("ask", "{\"question\":\"  \"}").isPresent());
+		assertTrue(validate("ask", "{}").isPresent());
+		assertTrue(validate("ask", "{\"question\":\"Q\",\"options\":[\"1\",\"2\",\"3\",\"4\",\"5\"]}").isPresent());
+		assertTrue(validate("ask", "{\"question\":\"Q\",\"options\":[\"" + "x".repeat(61) + "\"]}").isPresent());
+		assertTrue(validate("ask", "{\"question\":\"Q\",\"options\":[\"\"]}").isPresent());
+		assertTrue(validate("ask", "{\"question\":\"Q\",\"options\":\"Left\"}").isPresent());
+		assertTrue(validate("ask", "{\"question\":\"" + "q".repeat(301) + "\"}").isPresent());
+	}
 }

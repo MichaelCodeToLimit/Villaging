@@ -1,10 +1,12 @@
 package com.villaging.gametest;
 
 import com.villaging.ModItems;
+import com.villaging.client.AskScreen;
 import com.villaging.client.VillagerChatScreen;
 import com.villaging.config.VillagingConfig;
 import com.villaging.king.KingData;
 import com.villaging.king.Kings;
+import com.villaging.net.AnswerPayload;
 import com.villaging.net.CommandPayload;
 import com.villaging.villager.ActionManager;
 import com.villaging.villager.FollowAction;
@@ -49,6 +51,11 @@ import org.lwjgl.glfw.GLFW;
 public class VillagingClientGameTest implements FabricClientGameTest {
 	private final List<String> failures = new ArrayList<>();
 	private FakeOllama ollama;
+
+	@FunctionalInterface
+	private interface AskResponder {
+		void respond(ClientGameTestContext context) throws Exception;
+	}
 
 	@FunctionalInterface
 	private interface Check {
@@ -105,6 +112,9 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 			attempt("speech bubble text never stays as the villager name", () -> bubbleRestored(server));
 			attempt("sneak-click on a smart villager opens the chat screen", () -> sneakClick(context, server));
 			attempt("typing in the chat screen drives the villager end to end", () -> endToEnd(context, server));
+			attempt("ask opens the dialog and an option button answers the model", () -> askRound(context, server, "Left", c -> c.runOnClient(mc -> ((AskScreen) mc.gui.screen()).choose("Left")), "ok: the king answered \"Left\""));
+			attempt("ask accepts the king's own typed answer", () -> askRound(context, server, "Burn it all", c -> { c.getInput().typeChars("Burn it all"); c.getInput().pressKey(GLFW.GLFW_KEY_ENTER); }, "ok: the king answered \"Burn it all\""));
+			attempt("closing the ask dialog reads as no answer", () -> askRound(context, server, null, c -> c.runOnClient(mc -> mc.gui.screen().onClose()), "failed: the king did not answer"));
 			attempt("a command from a non-king is ignored", () -> forgedPacket(context, server));
 		} finally {
 			ollama.close();
@@ -408,6 +418,31 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 		server.runCommand("kill @e[type=minecraft:villager]");
 		server.waitFor(srv -> HandsManager.size() == 0, 200);
 		require(HandsManager.size() == 0, "hands were not released when the villager died");
+	}
+
+	/** Runs one model-asks-the-king round: dialog opens, {@code respond} answers it, the model sees {@code expected}. */
+	private void askRound(ClientGameTestContext context, TestServerContext server, String unused,
+			AskResponder respond, String expected) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager v = spawnVillager(server, 0, 100, 0);
+		server.runOnServer(srv -> VillagerBrains.set(v, VillagerBrain.DEFAULT.makeSmart("Alma")));
+		int id = server.computeOnServer(srv -> v.getId());
+		ollama.script(
+				"{\"message\":{\"role\":\"assistant\",\"content\":\"\",\"tool_calls\":[{\"function\":{\"name\":\"ask\",\"arguments\":{\"question\":\"Which way?\",\"options\":[\"Left\",\"Right\"]}}}]}}",
+				"{\"message\":{\"role\":\"assistant\",\"content\":\"Understood.\"}}");
+		context.runOnClient(mc -> ClientPlayNetworking.send(new CommandPayload(id, "decide for me")));
+		context.waitForScreen(AskScreen.class);
+		context.takeScreenshot("villaging-ask-dialog");
+		// A forged or stale answer must not close or answer the real question.
+		context.runOnClient(mc -> ClientPlayNetworking.send(new AnswerPayload(12345L, "Right")));
+		context.waitTicks(5);
+		require(context.computeOnClient(mc -> mc.gui.screen() instanceof AskScreen), "a stale answer closed the dialog");
+		respond.respond(context);
+		server.waitFor(srv -> ollama.requests.size() >= 2, 600);
+		require(ollama.requests.size() >= 2, "the model never got the answer");
+		String second = ollama.requests.get(1);
+		require(second.contains(expected.replace("\"", "\\\"")), "expected the tool result '" + expected + "' in: " + second);
 	}
 
 	private void bubbleRestored(TestServerContext server) {

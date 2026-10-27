@@ -5,9 +5,12 @@ import com.villaging.command.VillagingRuntime;
 import com.villaging.config.VillagingConfig;
 import com.villaging.king.CrownItem;
 import com.villaging.king.Kings;
+import com.villaging.net.AnswerPayload;
+import com.villaging.net.AskPayload;
 import com.villaging.net.CommandPayload;
 import com.villaging.net.OpenChatPayload;
 import com.villaging.ai.tools.AbilityTools;
+import com.villaging.ai.PendingQuestions;
 import com.villaging.villager.ActionManager;
 import com.villaging.villager.HandsManager;
 import com.villaging.villager.VillagerBrain;
@@ -43,11 +46,14 @@ public class Villaging implements ModInitializer {
 		VillagerBrains.init();
 		VillagerInventories.init();
 		ToolHandlers.registerBase();
+		ToolHandlers.registerAbilities();
 		AbilityTools.registerAll();
 		Kings.init();
 
 		PayloadTypeRegistry.serverboundPlay().register(CommandPayload.TYPE, CommandPayload.CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(OpenChatPayload.TYPE, OpenChatPayload.CODEC);
+		PayloadTypeRegistry.clientboundPlay().register(AskPayload.TYPE, AskPayload.CODEC);
+		PayloadTypeRegistry.serverboundPlay().register(AnswerPayload.TYPE, AnswerPayload.CODEC);
 
 		ServerLifecycleEvents.SERVER_STARTED.register(server -> runtime = new VillagingRuntime(server,
 				VillagingConfig.load(FabricLoader.getInstance().getConfigDir().resolve("villaging.json"))));
@@ -59,10 +65,17 @@ public class Villaging implements ModInitializer {
 			}
 			ActionManager.INSTANCE.clear();
 			HandsManager.clear();
+			PendingQuestions.INSTANCE.cancelAll();
 			VillagerSpeech.clear();
 		});
 		ServerTickEvents.END_LEVEL_TICK.register(ActionManager.INSTANCE::tick);
-		ServerTickEvents.END_SERVER_TICK.register(server -> VillagerSpeech.tick());
+		ServerTickEvents.END_SERVER_TICK.register(server -> {
+			VillagerSpeech.tick();
+			PendingQuestions.INSTANCE.expire(System.nanoTime());
+		});
+
+		ServerPlayNetworking.registerGlobalReceiver(AnswerPayload.TYPE, (payload, context) ->
+				PendingQuestions.INSTANCE.answer(context.player().getUUID(), payload.questionId(), payload.answer(), System.nanoTime()));
 
 		ServerPlayNetworking.registerGlobalReceiver(CommandPayload.TYPE, (payload, context) -> {
 			VillagingRuntime current = runtime;
@@ -98,6 +111,7 @@ public class Villaging implements ModInitializer {
 		ServerEntityEvents.ENTITY_UNLOAD.register((entity, level) -> {
 			if (entity instanceof Villager villager) {
 				HandsManager.release(villager);
+				PendingQuestions.INSTANCE.cancelFor(villager.getId());
 			}
 		});
 

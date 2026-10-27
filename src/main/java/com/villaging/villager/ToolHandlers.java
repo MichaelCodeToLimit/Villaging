@@ -21,6 +21,11 @@ public final class ToolHandlers {
 		return Optional.ofNullable(HANDLERS.get(name));
 	}
 
+	/** Registers every ability group's handlers; safe to call more than once. */
+	public static void registerAbilities() {
+		AskHandlers.register();
+	}
+
 	/** Registers the Foundation tools; safe to call more than once. */
 	public static void registerBase() {
 		register("say", (ctx, args) -> {
