@@ -10,5 +10,6 @@ public final class AbilityTools {
 		LookTools.register();
 		WorldTools.register();
 		ItemTools.register();
+		ContainerTools.register();
 	}
 }

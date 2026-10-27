@@ -127,7 +127,8 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 			attempt("use_block flips a lever", () -> useBlock(server));
 			attempt("break_area clears a box", () -> breakArea(server));
 			attempt("risky acts ask the king first and asking can be switched off", () -> riskGate(context, server));
-				attempt("item tools pick up, drop, hand over, take (with consent), equip and eat", () -> itemTools(context, server));
+			attempt("item tools pick up, drop, hand over, take (with consent), equip and eat", () -> itemTools(context, server));
+			attempt("container tools look in, fill and empty a chest", () -> containerTools(server));
 			attempt("a command from a non-king is ignored", () -> forgedPacket(context, server));
 		} finally {
 			ollama.close();
@@ -629,6 +630,34 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 		require(server.computeOnServer(srv -> v.getHealth()) > 10, "eating did not heal");
 		require(villagerCount(server, v, Items.APPLE) == 1, "an apple was not used up");
 		require(tool(server, v, "use_item", "{\"item\":\"minecraft:diamond_pickaxe\"}", 50).contains("don't have"), "use_item of an unheld item");
+	}
+
+	private void containerTools(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		server.runCommand("setblock 3 100 0 minecraft:chest");
+		server.runCommand("item replace block 3 100 0 container.0 with minecraft:diamond 5");
+		Villager v = spawnVillager(server, 0, 100, 0);
+		String open = tool(server, v, "open_container", "{\"x\":3,\"y\":100,\"z\":0}", 600);
+		require(open.startsWith("ok:") && open.contains("diamond") && open.contains("5"), "open_container said " + open);
+		String took = tool(server, v, "take_out", "{\"x\":3,\"y\":100,\"z\":0,\"item\":\"minecraft:diamond\",\"count\":3}", 600);
+		require(took.startsWith("ok: took 3"), "take_out said " + took);
+		require(villagerCount(server, v, Items.DIAMOND) == 3, "diamonds did not reach the villager");
+		require(tool(server, v, "take_out", "{\"x\":3,\"y\":100,\"z\":0,\"item\":\"minecraft:diamond\",\"count\":9}", 200)
+				.contains("only holds 2"), "taking more than the chest holds was not refused");
+		String put = tool(server, v, "put_in", "{\"x\":3,\"y\":100,\"z\":0,\"item\":\"minecraft:diamond\",\"count\":2}", 600);
+		require(put.startsWith("ok: put 2"), "put_in said " + put);
+		require(villagerCount(server, v, Items.DIAMOND) == 1, "put_in did not use up the diamonds");
+		require(tool(server, v, "put_in", "{\"x\":3,\"y\":100,\"z\":0,\"item\":\"minecraft:diamond\",\"count\":5}", 200)
+				.contains("only have 1"), "putting in more than carried was not refused");
+		require(tool(server, v, "open_container", "{\"x\":4,\"y\":100,\"z\":0}", 200).contains("no container"),
+				"opening thin air should fail");
+		String again = tool(server, v, "open_container", "{\"x\":3,\"y\":100,\"z\":0}", 200);
+		require(again.contains("diamond") && again.contains("4"), "chest should now hold 4 diamonds: " + again);
+		server.runCommand("gamemode adventure @p");
+		String blocked = tool(server, v, "take_out", "{\"x\":3,\"y\":100,\"z\":0,\"item\":\"minecraft:diamond\",\"count\":1}", 200);
+		server.runCommand("gamemode creative @p");
+		require(blocked.startsWith("failed") && blocked.contains("protected"), "protection did not apply to containers: " + blocked);
 	}
 
 	private static String toolCall(String name, String argsJson) {

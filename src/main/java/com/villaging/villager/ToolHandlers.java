@@ -31,6 +31,7 @@ public final class ToolHandlers {
 		LookHandlers.register();
 		WorldHandlers.register();
 		ItemHandlers.register();
+		ContainerHandlers.register();
 	}
 
 	/** Registers the Foundation tools; safe to call more than once. */
