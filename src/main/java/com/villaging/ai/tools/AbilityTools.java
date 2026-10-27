@@ -16,5 +16,6 @@ public final class AbilityTools {
 		CombatTools.register();
 		MoveTools.register();
 		ScriptTools.register();
+		CommandTools.register();
 	}
 }

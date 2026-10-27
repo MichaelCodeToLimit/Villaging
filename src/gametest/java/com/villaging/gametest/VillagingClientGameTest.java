@@ -142,6 +142,7 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 			attempt("sit stays put and sleep lies down at night and wakes at dawn", () -> sitAndSleep(server));
 			attempt("task scripts run, fail cleanly, obey limits and stop", () -> scripts(context, server));
 			attempt("a risky step inside a script still asks the king", () -> scriptRiskyStepAsks(context, server));
+			attempt("a commander relays orders only with the king's approval", () -> commanderRelay(context, server));
 			attempt("container tools look in, fill and empty a chest", () -> containerTools(server));
 			attempt("a command from a non-king is ignored", () -> forgedPacket(context, server));
 		} finally {
@@ -1030,6 +1031,38 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 		String result = awaitResult(server, run, 300);
 		require(result.startsWith("failed: step 1 place_block") && result.contains("the king said no"), "risky script step said " + result);
 		require(server.computeOnServer(srv -> srv.overworld().getBlockState(new BlockPos(3, 100, 1)).isAir()), "TNT was placed without a yes");
+	}
+
+	private void commanderRelay(ClientGameTestContext context, TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager alma = spawnVillager(server, 0, 100, 0);
+		Villager bram = spawnVillager(server, 3, 100, 0);
+		server.runOnServer(srv -> {
+			VillagerBrains.set(alma, VillagerBrain.DEFAULT.makeSmart("Alma"));
+			VillagerBrains.set(bram, VillagerBrain.DEFAULT.makeSmart("Bram"));
+		});
+		String order = "{\"villager_name\":\"Bram\",\"order\":\"gather some wood\"}";
+		// Only commanders may relay.
+		require(tool(server, alma, "relay_order", order, 100).contains("only a commander"), "a plain villager relayed an order");
+		server.runOnServer(srv -> VillagerBrains.set(alma, VillagerBrains.get(alma).withCommander(true)));
+		require(tool(server, alma, "relay_order", "{\"villager_name\":\"Zed\",\"order\":\"x\"}", 100).contains("can't find"), "unknown villager accepted");
+		// The king says no: nothing reaches Bram.
+		CompletableFuture<String> refused = toolAsync(server, alma, "relay_order", order);
+		answerDialog(context, "No");
+		require(awaitResult(server, refused, 100).contains("the king said no"), "a no was not reported");
+		waitTicks(server, 20);
+		require(server.computeOnServer(srv -> VillagerBrains.get(bram).memory().isEmpty()), "Bram heard the order after a no");
+		// The king says yes: Bram receives it as a command and answers through the normal model path.
+		ollama.script(reply("On it, my king."));
+		CompletableFuture<String> approved = toolAsync(server, alma, "relay_order", order);
+		answerDialog(context, "Yes");
+		String result = awaitResult(server, approved, 100);
+		require(result.startsWith("ok: passed the order to Bram"), "relay said " + result);
+		server.waitFor(srv -> VillagerBrains.get(bram).memory().size() >= 2, 600);
+		VillagerBrain heard = server.computeOnServer(srv -> VillagerBrains.get(bram));
+		require(heard.memory().contains("king: gather some wood"), "Bram's memory lacks the order: " + heard.memory());
+		require(ollama.requests.size() >= 1 && ollama.requests.get(0).contains("gather some wood"), "the model never saw the relayed order");
 	}
 
 	private static String toolCall(String name, String argsJson) {

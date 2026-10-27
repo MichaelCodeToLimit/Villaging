@@ -41,6 +41,11 @@ public class Villaging implements ModInitializer {
 
 	private static volatile VillagingRuntime runtime;
 
+	/** The running server's runtime, or null when no server is running. */
+	public static VillagingRuntime runtime() {
+		return runtime;
+	}
+
 	@Override
 	public void onInitialize() {
 		ModItems.init();
