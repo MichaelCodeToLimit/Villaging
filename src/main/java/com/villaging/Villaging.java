@@ -7,6 +7,7 @@ import com.villaging.king.CrownItem;
 import com.villaging.king.Kings;
 import com.villaging.net.CommandPayload;
 import com.villaging.net.OpenChatPayload;
+import com.villaging.ai.tools.AbilityTools;
 import com.villaging.villager.ActionManager;
 import com.villaging.villager.HandsManager;
 import com.villaging.villager.VillagerBrain;
@@ -42,6 +43,7 @@ public class Villaging implements ModInitializer {
 		VillagerBrains.init();
 		VillagerInventories.init();
 		ToolHandlers.registerBase();
+		AbilityTools.registerAll();
 		Kings.init();
 
 		PayloadTypeRegistry.serverboundPlay().register(CommandPayload.TYPE, CommandPayload.CODEC);
