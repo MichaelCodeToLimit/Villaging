@@ -7,7 +7,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
-import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.state.BlockState;
@@ -33,7 +33,7 @@ public final class PlaceBlockAction implements VillagerAction {
 	}
 
 	@Override
-	public Status tick(Villager villager) {
+	public Status tick(PathfinderMob villager) {
 		if (!(villager.level() instanceof ServerLevel level)) {
 			return Status.failed("not in a server world");
 		}
@@ -97,7 +97,7 @@ public final class PlaceBlockAction implements VillagerAction {
 	}
 
 	/** The creatures standing where the block would go, such as "a villager and a zombie"; empty when none. */
-	private String blockers(ServerLevel level, Villager villager) {
+	private String blockers(ServerLevel level, PathfinderMob villager) {
 		java.util.List<String> names = new java.util.ArrayList<>();
 		for (net.minecraft.world.entity.Entity e : level.getEntities((net.minecraft.world.entity.Entity) null,
 				new net.minecraft.world.phys.AABB(pos), entity -> !entity.isRemoved() && entity != villager)) {

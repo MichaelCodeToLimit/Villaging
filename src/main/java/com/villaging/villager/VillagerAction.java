@@ -1,6 +1,6 @@
 package com.villaging.villager;
 
-import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.entity.PathfinderMob;
 
 /** A multi-tick job a villager performs on the server main thread. */
 public interface VillagerAction {
@@ -23,10 +23,10 @@ public interface VillagerAction {
 		return false;
 	}
 
-	Status tick(Villager villager);
+	Status tick(PathfinderMob villager);
 
 	/** Called when the action is replaced, stopped or abandoned; must leave no half-finished state behind. */
-	default void cancel(Villager villager) {
+	default void cancel(PathfinderMob villager) {
 		villager.getNavigation().stop();
 	}
 }

@@ -7,7 +7,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.entity.PathfinderMob;
 
 /**
  * Holds at most one running {@link VillagerAction} per villager and ticks them. Main thread only,
@@ -16,7 +16,7 @@ import net.minecraft.world.entity.npc.villager.Villager;
 public final class ActionManager {
 	public static final ActionManager INSTANCE = new ActionManager();
 
-	private record Running(Villager villager, VillagerAction action, CompletableFuture<String> future) {
+	private record Running(PathfinderMob villager, VillagerAction action, CompletableFuture<String> future) {
 	}
 
 	private final Map<UUID, Running> running = new HashMap<>();
@@ -24,12 +24,12 @@ public final class ActionManager {
 	private ActionManager() {
 	}
 
-	public static boolean isControlled(Villager villager) {
+	public static boolean isControlled(PathfinderMob villager) {
 		return INSTANCE.running.containsKey(villager.getUUID());
 	}
 
 	/** Starts {@code action}, replacing any current one. The future completes with the result text. */
-	public CompletableFuture<String> run(Villager villager, VillagerAction action) {
+	public CompletableFuture<String> run(PathfinderMob villager, VillagerAction action) {
 		abandon(villager, "failed: replaced by a newer action");
 		CompletableFuture<String> future = new CompletableFuture<>();
 		running.put(villager.getUUID(), new Running(villager, action, future));
@@ -39,11 +39,11 @@ public final class ActionManager {
 		return future;
 	}
 
-	public void stop(Villager villager) {
+	public void stop(PathfinderMob villager) {
 		abandon(villager, "failed: stopped");
 	}
 
-	private void abandon(Villager villager, String reason) {
+	private void abandon(PathfinderMob villager, String reason) {
 		Running existing = running.remove(villager.getUUID());
 		if (existing != null) {
 			existing.action().cancel(villager);
@@ -53,7 +53,7 @@ public final class ActionManager {
 
 	public void tick(ServerLevel level) {
 		for (Running r : new ArrayList<>(running.values())) {
-			Villager villager = r.villager();
+			PathfinderMob villager = r.villager();
 			if (villager.level() != level) {
 				continue;
 			}

@@ -4,7 +4,7 @@ import com.villaging.Villaging;
 import net.fabricmc.fabric.api.attachment.v1.AttachmentRegistry;
 import net.fabricmc.fabric.api.attachment.v1.AttachmentType;
 import net.minecraft.resources.Identifier;
-import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.entity.PathfinderMob;
 
 /** Registers and accesses the persisted {@link VillagerBrain} attached to villagers. */
 public final class VillagerBrains {
@@ -18,11 +18,11 @@ public final class VillagerBrains {
 	public static void init() {
 	}
 
-	public static VillagerBrain get(Villager villager) {
+	public static VillagerBrain get(PathfinderMob villager) {
 		return villager.getAttachedOrElse(ATTACHMENT, VillagerBrain.DEFAULT);
 	}
 
-	public static void set(Villager villager, VillagerBrain brain) {
+	public static void set(PathfinderMob villager, VillagerBrain brain) {
 		villager.setAttached(ATTACHMENT, brain);
 	}
 }

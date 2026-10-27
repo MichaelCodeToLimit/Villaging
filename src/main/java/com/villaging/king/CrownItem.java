@@ -1,5 +1,6 @@
 package com.villaging.king;
 
+import com.villaging.villager.Kinds;
 import com.villaging.villager.Smartify;
 import com.villaging.villager.VillagerBrain;
 import com.villaging.villager.VillagerBrains;
@@ -8,7 +9,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -36,7 +37,7 @@ public class CrownItem extends Item {
 	@Override
 	public InteractionResult interactLivingEntity(ItemStack stack, Player player, LivingEntity target,
 			InteractionHand hand) {
-		if (!(target instanceof Villager villager)) {
+		if (!(target instanceof PathfinderMob villager) || !Kinds.canBeSmart(target)) {
 			return InteractionResult.PASS;
 		}
 		if (player.level().isClientSide() || !(player instanceof ServerPlayer sp)) {
@@ -46,10 +47,10 @@ public class CrownItem extends Item {
 	}
 
 	/**
-	 * Makes the villager smart if the player is king. Vanilla lets a villager's own interaction (trading) consume
+	 * Makes the villager (or golem) smart if the player is king. Vanilla lets a villager's own interaction (trading) consume
 	 * the click before the held item is consulted, so the mod's click hook calls this directly as well.
 	 */
-	public static InteractionResult applyToVillager(ServerPlayer sp, Villager villager) {
+	public static InteractionResult applyToVillager(ServerPlayer sp, PathfinderMob villager) {
 		if (!Kings.isKing(sp.level().getServer(), sp.getUUID())) {
 			sp.sendSystemMessage(Component.literal("Only the king may use this."));
 			return InteractionResult.FAIL;

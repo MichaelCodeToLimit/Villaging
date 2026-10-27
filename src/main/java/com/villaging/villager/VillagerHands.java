@@ -4,7 +4,7 @@ import com.mojang.authlib.GameProfile;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.EquipmentSlot;
-import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 
@@ -13,10 +13,10 @@ import net.minecraft.world.item.ItemStack;
  * vanilla player code with it. Its 36 inventory slots mirror the villager's own {@link VillagerInventory}.
  */
 public final class VillagerHands {
-	private final Villager villager;
+	private final PathfinderMob villager;
 	private final VillagerPlayer player;
 
-	VillagerHands(Villager villager) {
+	VillagerHands(PathfinderMob villager) {
 		this.villager = villager;
 		this.player = new VillagerPlayer((ServerLevel) villager.level(), new GameProfile(villager.getUUID(), "Villager"));
 	}
@@ -51,7 +51,10 @@ public final class VillagerHands {
 			ItemStack stack = player.getInventory().getItem(i);
 			if (stack.is(item)) {
 				player.getInventory().setSelectedSlot(i);
-				villager.setItemSlot(EquipmentSlot.MAINHAND, stack.copyWithCount(1));
+				// A copper golem's main hand is the item it is carrying to a chest; do not swap its load for a tool.
+				if (!(villager instanceof net.minecraft.world.entity.animal.golem.CopperGolem)) {
+					villager.setItemSlot(EquipmentSlot.MAINHAND, stack.copyWithCount(1));
+				}
 				return true;
 			}
 		}

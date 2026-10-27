@@ -71,6 +71,15 @@ class SystemPromptTest {
 	}
 
 	@Test
+	void aGolemKnowsWhatItIs() {
+		String p = SystemPrompt.build(BRAIN, SmartKind.IRON_GOLEM, "state", KING, "King");
+		assertTrue(p.contains("a smart iron golem"));
+		assertTrue(!p.contains("a smart villager"));
+		assertTrue(p.contains(SmartKind.IRON_GOLEM.personality()));
+		assertTrue(prompt().contains("a smart villager"));
+	}
+
+	@Test
 	void teachesRenamingRecruitingAndTitles() {
 		com.villaging.ai.tools.AbilityTools.registerAll();
 		String p = prompt();

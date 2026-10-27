@@ -12,7 +12,7 @@ import java.util.UUID;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.BlockTags;
-import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.entity.PathfinderMob;
 
 /** Fell a tree: break the connected logs from the chosen one, lowest first, as far as the villager can reach. */
 public final class ChopTreeAction implements VillagerAction {
@@ -33,7 +33,7 @@ public final class ChopTreeAction implements VillagerAction {
 	}
 
 	@Override
-	public Status tick(Villager villager) {
+	public Status tick(PathfinderMob villager) {
 		if (!(villager.level() instanceof ServerLevel level)) {
 			return Status.failed("not in a server world");
 		}
@@ -92,7 +92,7 @@ public final class ChopTreeAction implements VillagerAction {
 	}
 
 	@Override
-	public void cancel(Villager villager) {
+	public void cancel(PathfinderMob villager) {
 		if (current != null) {
 			current.cancel(villager);
 		}

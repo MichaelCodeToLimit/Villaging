@@ -10,7 +10,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.util.DefaultRandomPos;
 import net.minecraft.world.entity.monster.Enemy;
-import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.phys.Vec3;
@@ -24,7 +24,7 @@ final class CombatActions {
 	}
 
 	/** The weapon a villager fights with: what is in its hand, else the first sword or axe it carries. */
-	private static ItemStack weaponFor(Villager villager) {
+	private static ItemStack weaponFor(PathfinderMob villager) {
 		if (!villager.getMainHandItem().isEmpty()) {
 			return villager.getMainHandItem();
 		}
@@ -39,7 +39,7 @@ final class CombatActions {
 	}
 
 	/** One full-strength swing at {@code target} through the villager's hands. */
-	private static void strike(Villager villager, LivingEntity target) {
+	private static void strike(PathfinderMob villager, LivingEntity target) {
 		VillagerHands hands = HandsManager.get(villager);
 		hands.syncFrom();
 		VillagerPlayer player = hands.player();
@@ -65,7 +65,7 @@ final class CombatActions {
 		}
 
 		@Override
-		public Status tick(Villager villager) {
+		public Status tick(PathfinderMob villager) {
 			if (!(villager.level() instanceof ServerLevel level)) {
 				return Status.failed("not in a server world");
 			}
@@ -113,7 +113,7 @@ final class CombatActions {
 		}
 
 		@Override
-		public Status tick(Villager villager) {
+		public Status tick(PathfinderMob villager) {
 			if (!(villager.level() instanceof ServerLevel level)) {
 				return Status.failed("not in a server world");
 			}
@@ -190,7 +190,7 @@ final class CombatActions {
 		}
 
 		@Override
-		public Status tick(Villager villager) {
+		public Status tick(PathfinderMob villager) {
 			if (!(villager.level() instanceof ServerLevel level)) {
 				return Status.RUNNING;
 			}
@@ -225,7 +225,7 @@ final class CombatActions {
 			return Status.RUNNING;
 		}
 
-		private LivingEntity nearestThreat(ServerLevel level, Villager villager, Entity centre) {
+		private LivingEntity nearestThreat(ServerLevel level, PathfinderMob villager, Entity centre) {
 			LivingEntity best = null;
 			for (LivingEntity e : level.getEntitiesOfClass(LivingEntity.class, centre.getBoundingBox().inflate(GUARD_RADIUS),
 					entity -> entity instanceof Enemy && entity.isAlive() && Protection.entityProblem(entity) == null)) {
@@ -249,7 +249,7 @@ final class CombatActions {
 		}
 
 		@Override
-		public Status tick(Villager villager) {
+		public Status tick(PathfinderMob villager) {
 			if (!(villager.level() instanceof ServerLevel level)) {
 				return Status.failed("not in a server world");
 			}

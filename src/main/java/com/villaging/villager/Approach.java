@@ -2,7 +2,7 @@ package com.villaging.villager;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.ai.navigation.PathNavigation;
-import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.level.pathfinder.Path;
 import net.minecraft.world.phys.Vec3;
 
@@ -20,7 +20,7 @@ final class Approach {
 	 * Walks toward {@code pos}. Returns null once within {@code reach} of its centre, {@link VillagerAction.Status#RUNNING}
 	 * while walking, or a failure when there is no way there. {@code ticks} is how long the action has run.
 	 */
-	static VillagerAction.Status toward(Villager villager, BlockPos pos, double reach, int ticks) {
+	static VillagerAction.Status toward(PathfinderMob villager, BlockPos pos, double reach, int ticks) {
 		if (villager.getEyePosition().distanceTo(Vec3.atCenterOf(pos)) <= reach) {
 			villager.getNavigation().stop();
 			return null;

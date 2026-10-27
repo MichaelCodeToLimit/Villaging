@@ -2,7 +2,7 @@ package com.villaging.villager;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.level.block.BedBlock;
 import net.minecraft.world.level.block.state.BlockState;
 
@@ -19,7 +19,7 @@ final class RestActions {
 		}
 
 		@Override
-		public Status tick(Villager villager) {
+		public Status tick(PathfinderMob villager) {
 			villager.getNavigation().stop();
 			return Status.RUNNING;
 		}
@@ -38,7 +38,7 @@ final class RestActions {
 		}
 
 		@Override
-		public Status tick(Villager villager) {
+		public Status tick(PathfinderMob villager) {
 			if (!(villager.level() instanceof ServerLevel level)) {
 				return Status.failed("not in a server world");
 			}
@@ -79,7 +79,7 @@ final class RestActions {
 		}
 
 		@Override
-		public Status tick(Villager villager) {
+		public Status tick(PathfinderMob villager) {
 			if (!(villager.level() instanceof ServerLevel level)) {
 				return Status.RUNNING;
 			}
@@ -94,7 +94,7 @@ final class RestActions {
 		}
 
 		@Override
-		public void cancel(Villager villager) {
+		public void cancel(PathfinderMob villager) {
 			if (villager.isSleeping()) {
 				villager.stopSleeping();
 			}

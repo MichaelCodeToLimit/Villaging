@@ -1,6 +1,6 @@
 package com.villaging.villager;
 
-import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.entity.PathfinderMob;
 
 /** Walk to a position; succeeds within 2 blocks of it. */
 public final class GoToAction implements VillagerAction {
@@ -24,7 +24,7 @@ public final class GoToAction implements VillagerAction {
 	}
 
 	@Override
-	public Status tick(Villager villager) {
+	public Status tick(PathfinderMob villager) {
 		if (distanceTo(villager) <= 2.0) {
 			return Status.done("arrived");
 		}
@@ -44,7 +44,7 @@ public final class GoToAction implements VillagerAction {
 		return Status.RUNNING;
 	}
 
-	private double distanceTo(Villager v) {
+	private double distanceTo(PathfinderMob v) {
 		double dx = v.getX() - x;
 		double dy = v.getY() - y;
 		double dz = v.getZ() - z;

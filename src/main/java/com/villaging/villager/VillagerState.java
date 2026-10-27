@@ -5,7 +5,7 @@ import java.util.Map;
 import java.util.TreeMap;
 import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.item.ItemStack;
 
 /** Describes a villager's own situation for the AI prompt. Main thread only. */
@@ -15,7 +15,7 @@ public final class VillagerState {
 	private VillagerState() {
 	}
 
-	public static String describe(Villager villager) {
+	public static String describe(PathfinderMob villager) {
 		StringBuilder sb = new StringBuilder();
 		sb.append(String.format(Locale.ROOT, "You are at (%.1f, %.1f, %.1f). Health %.0f/%.0f.\n", villager.getX(),
 				villager.getY(), villager.getZ(), villager.getHealth(), villager.getMaxHealth()));

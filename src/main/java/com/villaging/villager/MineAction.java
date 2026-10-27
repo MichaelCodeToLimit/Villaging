@@ -7,7 +7,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.Container;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.ai.navigation.PathNavigation;
-import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.pathfinder.Path;
@@ -42,7 +42,7 @@ public final class MineAction implements VillagerAction {
 	}
 
 	@Override
-	public Status tick(Villager villager) {
+	public Status tick(PathfinderMob villager) {
 		if (!(villager.level() instanceof ServerLevel level)) {
 			return Status.failed("not in a server world");
 		}
@@ -112,7 +112,7 @@ public final class MineAction implements VillagerAction {
 	}
 
 	@Override
-	public void cancel(Villager villager) {
+	public void cancel(PathfinderMob villager) {
 		villager.getNavigation().stop();
 		if (villager.level() instanceof ServerLevel level) {
 			level.destroyBlockProgress(villager.getId(), pos, -1);

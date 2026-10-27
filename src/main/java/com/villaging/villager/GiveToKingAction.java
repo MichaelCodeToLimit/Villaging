@@ -3,7 +3,7 @@ package com.villaging.villager;
 import java.util.UUID;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 
@@ -24,7 +24,7 @@ public final class GiveToKingAction implements VillagerAction {
 	}
 
 	@Override
-	public Status tick(Villager villager) {
+	public Status tick(PathfinderMob villager) {
 		if (!(villager.level() instanceof ServerLevel level)) {
 			return Status.failed("not in a server world");
 		}

@@ -16,6 +16,7 @@ public final class PeopleTools {
 	public static final int MAX_NAME = 24;
 	public static final int MAX_RECRUITS = 5;
 	public static final Set<String> SCOPES = Set.of("me", "everyone");
+	public static final String[] KINDS = {"any", "villager", "iron_golem", "copper_golem"};
 
 	private PeopleTools() {
 	}
@@ -60,10 +61,17 @@ public final class PeopleTools {
 					return title.isPresent() ? title : ToolSchema.oneOf(args, "scope", SCOPES);
 				});
 		Tools.register(new ToolDef("recruit",
-				"Turn nearby ordinary villagers into new smart villagers, up to " + MAX_RECRUITS + " per order. The king is "
-						+ "asked to approve first.",
-				object(prop("count", "integer", "How many to recruit, 1 to " + MAX_RECRUITS + "; default 1.")).build()),
-				(args, range, ox, oy, oz) -> args.has("count") ? ToolSchema.intIn(args, "count", 1, MAX_RECRUITS)
-						: Optional.empty());
+				"Turn nearby ordinary villagers, iron golems or copper golems into new smart ones, up to " + MAX_RECRUITS
+						+ " per order. The king is asked to approve first.",
+				object(prop("count", "integer", "How many to recruit, 1 to " + MAX_RECRUITS + "; default 1."),
+						enumProp("kind", "What to recruit; default any (the nearest of any kind).", KINDS)).build()),
+				(args, range, ox, oy, oz) -> {
+					Optional<String> count = args.has("count") ? ToolSchema.intIn(args, "count", 1, MAX_RECRUITS)
+							: Optional.empty();
+					if (count.isPresent() || !args.has("kind")) {
+						return count;
+					}
+					return ToolSchema.oneOf(args, "kind", Set.of(KINDS));
+				});
 	}
 }

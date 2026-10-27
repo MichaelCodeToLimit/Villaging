@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.item.Item;
 
 /**
@@ -69,7 +69,7 @@ public final class ScriptManager {
 	}
 
 	/** Stops the villager's script, if any. Returns whether one was running. */
-	public boolean cancel(Villager villager) {
+	public boolean cancel(PathfinderMob villager) {
 		AtomicBoolean flag = cancelFlags.remove(villager.getUUID());
 		if (flag != null) {
 			flag.set(true);
@@ -84,7 +84,7 @@ public final class ScriptManager {
 	}
 
 	/** Reads the world for script conditions, hopping to the server thread for each question. */
-	private record WorldFacts(MinecraftServer server, Villager villager) implements Facts {
+	private record WorldFacts(MinecraftServer server, PathfinderMob villager) implements Facts {
 		private <T> T onServer(java.util.function.Supplier<T> read) {
 			return server.submit(read).join();
 		}

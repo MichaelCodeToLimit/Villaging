@@ -13,9 +13,15 @@ public final class SystemPrompt {
 
 	/** {@code worldTitle} is what the king asked all villagers to call them; a villager's own title wins over it. */
 	public static String build(VillagerBrain brain, String villagerState, String kingContext, String worldTitle) {
+		return build(brain, SmartKind.VILLAGER, villagerState, kingContext, worldTitle);
+	}
+
+	public static String build(VillagerBrain brain, SmartKind kind, String villagerState, String kingContext,
+			String worldTitle) {
 		String title = brain.kingTitle().isEmpty() ? worldTitle : brain.kingTitle();
 		StringBuilder sb = new StringBuilder();
-		sb.append("You are ").append(brain.name()).append(", a smart villager in a Minecraft world. ")
+		sb.append("You are ").append(brain.name()).append(", a smart ").append(kind.label())
+				.append(" in a Minecraft world. ").append(kind.personality()).append(' ')
 				.append("You serve the king, who is the player talking to you. You call the king \"").append(title)
 				.append("\". You are loyal, capable and a little ")
 				.append("charming, and you speak in short, natural, in-character sentences (one or two at most).\n\n");
@@ -45,7 +51,8 @@ public final class SystemPrompt {
 				.append("- If the king wants you or another smart villager to have a different name, call rename.\n")
 				.append("- If the king wants to be called something else (\"call me Boss\"), call set_king_title: scope ")
 				.append("\"everyone\" when they mean all villagers, \"me\" when only you.\n")
-				.append("- If the king wants more smart villagers, call recruit; the king is asked to approve first.\n");
+				.append("- If the king wants more smart villagers or golems, call recruit (set kind for \"the iron golem\" ")
+				.append("or \"the copper golem\"); the king is asked to approve first.\n");
 		sb.append("\nHOW YOU WORK\n")
 				.append("- You have your own inventory. You can only use, place, craft or give what you actually carry; gather or ")
 				.append("ask for what is missing. When you are unsure what is around you, call look_around first.\n")

@@ -13,6 +13,7 @@ import com.villaging.config.VillagingConfig;
 import com.villaging.king.KingContextReader;
 import com.villaging.king.Kings;
 import com.villaging.villager.Conversation;
+import com.villaging.villager.Kinds;
 import com.villaging.villager.Smartify;
 import com.villaging.villager.MinecraftActionExecutor;
 import com.villaging.villager.VillagerBrain;
@@ -31,6 +32,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.entity.npc.villager.Villager;
 
 /** Per-server glue: owns the AI provider, the background threads and the {@link CommandService}. */
@@ -88,6 +90,7 @@ public final class VillagingRuntime implements CommandService.Backend {
 				|| message.length() > CommandService.MAX_MESSAGE_LENGTH) {
 			return;
 		}
+		// Only villagers are made smart by being spoken to; golems must be recruited by a smart villager first.
 		if (!(player.level().getEntity(villagerId) instanceof Villager villager) || villager.isRemoved()
 				|| VillagerBrains.get(villager).smart() || villager.distanceTo(player) > CommandService.MAX_DISTANCE) {
 			return;
@@ -138,10 +141,10 @@ public final class VillagingRuntime implements CommandService.Backend {
 			return VillagerStatus.NOT_SMART;
 		}
 		Entity entity = sp.level().getEntity(villagerId);
-		if (!(entity instanceof Villager villager) || !VillagerBrains.get(villager).smart()) {
+		if (!Kinds.isSmart(entity)) {
 			return VillagerStatus.NOT_SMART;
 		}
-		return villager.distanceTo(sp) > maxDistance ? VillagerStatus.TOO_FAR : VillagerStatus.OK;
+		return entity.distanceTo(sp) > maxDistance ? VillagerStatus.TOO_FAR : VillagerStatus.OK;
 	}
 
 	@Override
@@ -152,10 +155,10 @@ public final class VillagingRuntime implements CommandService.Backend {
 	@Override
 	public AgentLoop.Handle startLoop(UUID player, int villagerId, String message) {
 		ServerPlayer king = server.getPlayerList().getPlayer(player);
-		Villager villager = (Villager) king.level().getEntity(villagerId);
+		PathfinderMob villager = (PathfinderMob) king.level().getEntity(villagerId);
 		VillagerBrain brain = VillagerBrains.get(villager);
 
-		String system = SystemPrompt.build(brain, VillagerState.describe(villager), KingContextReader.read(king),
+		String system = SystemPrompt.build(brain, Kinds.kindOf(villager), VillagerState.describe(villager), KingContextReader.read(king),
 				Kings.title(server));
 		// History excludes the new message (it is passed separately); the message is stored right away
 		// so a quick follow-up command always sees the earlier ones in the order they were given.

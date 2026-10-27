@@ -4,7 +4,7 @@ import com.villaging.Villaging;
 import net.fabricmc.fabric.api.attachment.v1.AttachmentRegistry;
 import net.fabricmc.fabric.api.attachment.v1.AttachmentType;
 import net.minecraft.resources.Identifier;
-import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.entity.PathfinderMob;
 
 /** Registers and accesses the persisted {@link VillagerInventory} attached to villagers. */
 public final class VillagerInventories {
@@ -19,7 +19,7 @@ public final class VillagerInventories {
 	}
 
 	/** The villager's inventory; created empty (and attached) on first use so changes are saved. */
-	public static VillagerInventory get(Villager villager) {
+	public static VillagerInventory get(PathfinderMob villager) {
 		VillagerInventory inv = villager.getAttached(ATTACHMENT);
 		if (inv == null) {
 			inv = new VillagerInventory();

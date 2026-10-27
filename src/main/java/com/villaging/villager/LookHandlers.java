@@ -17,7 +17,7 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.OwnableEntity;
 import net.minecraft.world.entity.TamableAnimal;
 import net.minecraft.world.entity.item.ItemEntity;
-import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -46,7 +46,7 @@ final class LookHandlers {
 				CompletableFuture.completedFuture("ok: " + inventory(ctx.villager())));
 	}
 
-	static String inventory(Villager villager) {
+	static String inventory(PathfinderMob villager) {
 		Map<String, Integer> items = new TreeMap<>();
 		VillagerInventory inv = VillagerInventories.get(villager);
 		for (int i = 0; i < inv.getContainerSize(); i++) {
@@ -58,7 +58,7 @@ final class LookHandlers {
 		return items.isEmpty() ? "I am carrying nothing." : "I am carrying " + items + ".";
 	}
 
-	static String lookAt(Villager villager, BlockPos pos) {
+	static String lookAt(PathfinderMob villager, BlockPos pos) {
 		ServerLevel level = (ServerLevel) villager.level();
 		if (!level.isLoaded(pos)) {
 			return "that position is not loaded";
@@ -79,7 +79,7 @@ final class LookHandlers {
 		return sb.toString();
 	}
 
-	static String lookAround(Villager villager, int radius) {
+	static String lookAround(PathfinderMob villager, int radius) {
 		ServerLevel level = (ServerLevel) villager.level();
 		BlockPos center = villager.blockPosition();
 		Map<String, int[]> counts = new LinkedHashMap<>();
@@ -115,7 +115,7 @@ final class LookHandlers {
 		return text.length() > MAX_CHARS ? text.substring(0, MAX_CHARS) + "..." : text;
 	}
 
-	private static String creatures(ServerLevel level, Villager villager, int radius) {
+	private static String creatures(ServerLevel level, PathfinderMob villager, int radius) {
 		Map<String, double[]> found = new TreeMap<>();
 		for (LivingEntity e : level.getEntitiesOfClass(LivingEntity.class, villager.getBoundingBox().inflate(radius))) {
 			if (e == villager) {
@@ -138,7 +138,7 @@ final class LookHandlers {
 		return String.join("; ", parts);
 	}
 
-	private static String drops(ServerLevel level, Villager villager, int radius) {
+	private static String drops(ServerLevel level, PathfinderMob villager, int radius) {
 		Map<String, Integer> found = new TreeMap<>();
 		for (ItemEntity e : level.getEntitiesOfClass(ItemEntity.class, villager.getBoundingBox().inflate(radius))) {
 			found.merge(id(e.getItem()), e.getItem().getCount(), Integer::sum);

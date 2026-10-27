@@ -9,7 +9,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
-import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -43,7 +43,7 @@ final class FarmActions {
 		}
 
 		@Override
-		public Status tick(Villager villager) {
+		public Status tick(PathfinderMob villager) {
 			if (!(villager.level() instanceof ServerLevel level)) {
 				return Status.failed("not in a server world");
 			}
@@ -98,7 +98,7 @@ final class FarmActions {
 		}
 
 		@Override
-		public Status tick(Villager villager) {
+		public Status tick(PathfinderMob villager) {
 			if (!(villager.level() instanceof ServerLevel level)) {
 				return Status.failed("not in a server world");
 			}
@@ -138,7 +138,7 @@ final class FarmActions {
 		}
 
 		@Override
-		public void cancel(Villager villager) {
+		public void cancel(PathfinderMob villager) {
 			if (mining != null) {
 				mining.cancel(villager);
 			}

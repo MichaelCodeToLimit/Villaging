@@ -11,7 +11,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.EquipmentSlot;
-import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.food.FoodProperties;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -106,7 +106,7 @@ final class ItemHandlers {
 	}
 
 	/** Moves one item of {@code item} into the villager's matching equipment slot, returning what was worn before. */
-	static String equip(Villager villager, Item item) {
+	static String equip(PathfinderMob villager, Item item) {
 		VillagerInventory inventory = VillagerInventories.get(villager);
 		if (inventory.count(item) < 1) {
 			return "failed: I don't have " + name(item);
@@ -126,7 +126,7 @@ final class ItemHandlers {
 	}
 
 	/** Eats one food item and heals by its nutrition. */
-	static String eat(Villager villager, Item wanted) {
+	static String eat(PathfinderMob villager, Item wanted) {
 		VillagerInventory inventory = VillagerInventories.get(villager);
 		for (int i = 0; i < inventory.getContainerSize(); i++) {
 			ItemStack stack = inventory.getItem(i);

@@ -2,7 +2,7 @@ package com.villaging.villager;
 
 import java.util.UUID;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.entity.PathfinderMob;
 
 /** Follow a player until replaced or stopped. */
 public final class FollowAction implements VillagerAction {
@@ -22,7 +22,7 @@ public final class FollowAction implements VillagerAction {
 	}
 
 	@Override
-	public Status tick(Villager villager) {
+	public Status tick(PathfinderMob villager) {
 		Player player = villager.level().getPlayerByUUID(playerId);
 		if (player == null) {
 			return Status.RUNNING; // king is elsewhere; wait for them

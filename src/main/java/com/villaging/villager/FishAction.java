@@ -3,7 +3,7 @@ package com.villaging.villager;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.InteractionHand;
-import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
@@ -30,7 +30,7 @@ public final class FishAction implements VillagerAction {
 	}
 
 	@Override
-	public Status tick(Villager villager) {
+	public Status tick(PathfinderMob villager) {
 		if (!(villager.level() instanceof ServerLevel level)) {
 			return Status.failed("not in a server world");
 		}
@@ -63,7 +63,7 @@ public final class FishAction implements VillagerAction {
 	}
 
 	/** Rolls one catch. False when the rod broke doing it. */
-	private boolean catchOne(Villager villager, ServerLevel level, VillagerInventory inventory) {
+	private boolean catchOne(PathfinderMob villager, ServerLevel level, VillagerInventory inventory) {
 		ItemStack rod = ItemStack.EMPTY;
 		int rodSlot = -1;
 		for (int i = 0; i < inventory.getContainerSize(); i++) {

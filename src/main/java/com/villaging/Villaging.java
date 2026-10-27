@@ -37,7 +37,9 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.entity.npc.villager.Villager;
+import com.villaging.villager.Kinds;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -147,14 +149,14 @@ public class Villaging implements ModInitializer {
 		// Runs before vanilla villager interaction (which would otherwise open trading and swallow the click):
 		// the crown makes a villager smart, and sneak + right-click on a smart villager opens the chat box.
 		UseEntityCallback.EVENT.register((player, level, hand, entity, hit) -> {
-			if (level.isClientSide() || hand != InteractionHand.MAIN_HAND || !(entity instanceof Villager villager)
+			if (level.isClientSide() || hand != InteractionHand.MAIN_HAND || !(entity instanceof PathfinderMob villager) || !Kinds.canBeSmart(entity)
 					|| !(player instanceof ServerPlayer sp)) {
 				return InteractionResult.PASS;
 			}
 			VillagerBrain brain = VillagerBrains.get(villager);
 			// Sneak + right-click on any villager opens the box; speaking to an ordinary one makes it smart.
 			boolean mayCommand = Kings.isKing(level.getServer(), sp.getUUID()) || Kings.get(level.getServer()).king().isEmpty();
-			if (player.isShiftKeyDown() && mayCommand) {
+			if (player.isShiftKeyDown() && mayCommand && (villager instanceof Villager || brain.smart())) {
 				ServerPlayNetworking.send(sp, new OpenChatPayload(villager.getId(),
 						brain.smart() ? brain.name() : "this villager"));
 				return InteractionResult.SUCCESS_SERVER;
@@ -167,7 +169,7 @@ public class Villaging implements ModInitializer {
 
 		// The villager's hidden fake player goes with it.
 		ServerEntityEvents.ENTITY_UNLOAD.register((entity, level) -> {
-			if (entity instanceof Villager villager) {
+			if (entity instanceof PathfinderMob villager && Kinds.canBeSmart(entity)) {
 				HandsManager.release(villager);
 				PendingQuestions.INSTANCE.cancelFor(villager.getId());
 				ScriptManager.INSTANCE.cancel(villager);
@@ -176,7 +178,7 @@ public class Villaging implements ModInitializer {
 
 		// A smart villager that was showing a speech bubble when its chunk was saved gets its real name back.
 		ServerEntityEvents.ENTITY_LOAD.register((entity, level) -> {
-			if (entity instanceof Villager villager) {
+			if (entity instanceof PathfinderMob villager && Kinds.canBeSmart(entity)) {
 				VillagerSpeech.heal(villager);
 			}
 		});

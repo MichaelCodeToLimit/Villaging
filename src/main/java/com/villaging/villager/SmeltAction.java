@@ -3,7 +3,7 @@ package com.villaging.villager;
 import java.util.Optional;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.RecipeHolder;
@@ -37,7 +37,7 @@ public final class SmeltAction implements VillagerAction {
 	}
 
 	@Override
-	public Status tick(Villager villager) {
+	public Status tick(PathfinderMob villager) {
 		if (!(villager.level() instanceof ServerLevel level)) {
 			return Status.failed("not in a server world");
 		}
@@ -62,7 +62,7 @@ public final class SmeltAction implements VillagerAction {
 		return Status.RUNNING;
 	}
 
-	private Status prepare(Villager villager, ServerLevel level) {
+	private Status prepare(PathfinderMob villager, ServerLevel level) {
 		String name = new ItemStack(item).getHoverName().getString();
 		if (pos == null) {
 			pos = Stations.find(level, villager.blockPosition(), Stations.RADIUS, s -> s.is(Blocks.FURNACE));
@@ -130,7 +130,7 @@ public final class SmeltAction implements VillagerAction {
 	}
 
 	/** Moves everything left in the furnace back to the villager; returns how many products it took. */
-	private int reclaim(Villager villager, ServerLevel level, AbstractFurnaceBlockEntity furnace) {
+	private int reclaim(PathfinderMob villager, ServerLevel level, AbstractFurnaceBlockEntity furnace) {
 		VillagerInventory inventory = VillagerInventories.get(villager);
 		int products = furnace.getItem(SLOT_OUTPUT).getCount();
 		for (int slot : new int[] {SLOT_OUTPUT, SLOT_FUEL, SLOT_INPUT}) {
@@ -148,7 +148,7 @@ public final class SmeltAction implements VillagerAction {
 	}
 
 	@Override
-	public void cancel(Villager villager) {
+	public void cancel(PathfinderMob villager) {
 		villager.getNavigation().stop();
 		if (loaded && villager.level() instanceof ServerLevel level
 				&& level.getBlockEntity(pos) instanceof AbstractFurnaceBlockEntity furnace) {

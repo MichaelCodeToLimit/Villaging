@@ -4,9 +4,8 @@ import com.villaging.Villaging;
 import com.villaging.command.CommandService.CommandResult;
 import com.villaging.command.VillagingRuntime;
 import java.util.concurrent.CompletableFuture;
-import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.entity.PathfinderMob;
 
 /** Handler for the commander's relay_order tool: the king approves each relayed order. */
 final class RelayHandlers {
@@ -24,21 +23,17 @@ final class RelayHandlers {
 			}
 			String wanted = args.get("villager_name").getAsString().trim();
 			String order = args.get("order").getAsString().trim();
-			Villager target = null;
-			if (ctx.villager().level() instanceof ServerLevel level) {
-				for (Villager other : level.getEntitiesOfClass(Villager.class,
-						ctx.villager().getBoundingBox().inflate(ctx.config().actionRange()))) {
-					VillagerBrain brain = VillagerBrains.get(other);
-					if (other != ctx.villager() && brain.smart() && brain.name().equalsIgnoreCase(wanted)) {
-						target = other;
-						break;
-					}
+			PathfinderMob target = null;
+			for (PathfinderMob other : Smartify.smartNear(ctx.villager(), ctx.config().actionRange())) {
+				if (other != ctx.villager() && VillagerBrains.get(other).name().equalsIgnoreCase(wanted)) {
+					target = other;
+					break;
 				}
 			}
 			if (target == null) {
 				return failed("I can't find a smart villager called " + wanted + " nearby");
 			}
-			Villager chosen = target;
+			PathfinderMob chosen = target;
 			String commander = VillagerBrains.get(ctx.villager()).name();
 			return AskService.confirmThen(ctx, commander + " wants " + VillagerBrains.get(chosen).name() + " to: " + order
 					+ ". Allow it?", yes -> {

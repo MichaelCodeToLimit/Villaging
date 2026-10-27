@@ -43,6 +43,15 @@ class PeopleToolsTest {
 	}
 
 	@Test
+	void recruitCanBeLimitedToOneKindOfCreature() {
+		for (String kind : new String[] {"any", "villager", "iron_golem", "copper_golem"}) {
+			assertEquals(Optional.empty(), validate("recruit", "{\"kind\":\"" + kind + "\"}"), kind);
+		}
+		assertTrue(validate("recruit", "{\"kind\":\"creeper\"}").isPresent());
+		assertEquals(Optional.empty(), validate("recruit", "{\"count\":2,\"kind\":\"iron_golem\"}"));
+	}
+
+	@Test
 	void recruitTakesACountFromOneToFive() {
 		assertEquals(Optional.empty(), validate("recruit", "{}"));
 		assertEquals(Optional.empty(), validate("recruit", "{\"count\":5}"));

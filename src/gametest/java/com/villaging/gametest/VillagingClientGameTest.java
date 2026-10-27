@@ -47,6 +47,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.entity.npc.villager.Villager;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -156,6 +157,9 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 			attempt("sneak-click opens the chat on an ordinary villager", () -> sneakClickOnAnOrdinaryVillager(context, server));
 			attempt("rename and the king's title reach the villager and the prompt", () -> renameAndKingTitle(context, server));
 			attempt("recruit asks the king and makes the nearest villagers smart", () -> recruiting(context, server));
+			attempt("recruit makes iron and copper golems smart", () -> recruitingGolems(context, server));
+			attempt("smart golems obey orders and know what they are", () -> smartGolemsObey(context, server));
+			attempt("sneak-click talks to a smart golem but leaves ordinary ones alone", () -> golemClicks(context, server));
 			attempt("the key box opens with /villaging key and saves the key", () -> keyBox(context, server));
 		} finally {
 			ollama.close();
@@ -222,7 +226,7 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 		require(server.computeOnServer(srv -> Kings.claim(srv, id)), "could not make the test player king");
 	}
 
-	private static CompletableFuture<String> startAction(TestServerContext server, Villager v, VillagerAction action) {
+	private static CompletableFuture<String> startAction(TestServerContext server, PathfinderMob v, VillagerAction action) {
 		return server.computeOnServer(srv -> ActionManager.INSTANCE.run(v, action));
 	}
 
@@ -231,7 +235,7 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 		return future.isCompletedExceptionally() ? "EXCEPTION" : future.get();
 	}
 
-	private static double distance(TestServerContext server, Villager v, double x, double y, double z) {
+	private static double distance(TestServerContext server, PathfinderMob v, double x, double y, double z) {
 		return server.computeOnServer(srv -> v.position().distanceTo(new Vec3(x, y, z)));
 	}
 
@@ -490,11 +494,11 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 	}
 
 	/** Runs one tool through the real validate, risk gate and handler path with no model, and returns its result. */
-	private static String tool(TestServerContext server, Villager v, String name, String argsJson, int ticks) throws Exception {
+	private static String tool(TestServerContext server, PathfinderMob v, String name, String argsJson, int ticks) throws Exception {
 		return tool(server, v, VillagingConfig.defaults(), name, argsJson, ticks);
 	}
 
-	private static String tool(TestServerContext server, Villager v, VillagingConfig config, String name, String argsJson,
+	private static String tool(TestServerContext server, PathfinderMob v, VillagingConfig config, String name, String argsJson,
 			int ticks) throws Exception {
 		UUID king = playerId(server);
 		CompletableFuture<String> future = server.computeOnServer(srv -> {
@@ -578,7 +582,7 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 	}
 
 	/** Starts a tool without waiting, for tools that wait on the king's answer in the dialog. */
-	private static CompletableFuture<String> toolAsync(TestServerContext server, Villager v, String name, String argsJson) {
+	private static CompletableFuture<String> toolAsync(TestServerContext server, PathfinderMob v, String name, String argsJson) {
 		UUID king = playerId(server);
 		return server.computeOnServer(srv -> {
 			MinecraftActionExecutor exec = new MinecraftActionExecutor(srv, v, king, VillagingConfig.defaults());
@@ -1543,6 +1547,103 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 		require(server.computeOnServer(srv -> VillagerBrains.get(a).smart() && VillagerBrains.get(b).smart() && !VillagerBrains.get(c).smart()),
 				"the two nearest villagers should be the recruits");
 		require(server.computeOnServer(srv -> !VillagerBrains.get(a).name().equalsIgnoreCase(VillagerBrains.get(b).name())), "recruits share a name");
+	}
+
+	private static PathfinderMob spawnMob(TestServerContext server, String type, double x, double y, double z) {
+		server.runCommand("summon minecraft:" + type + " " + x + " " + y + " " + z);
+		return server.computeOnServer(srv -> {
+			List<PathfinderMob> found = srv.overworld().getEntitiesOfClass(PathfinderMob.class,
+					new AABB(x - 1, y - 1, z - 1, x + 1, y + 2, z + 1), m -> m.isAlive() && !m.isRemoved()
+							&& m.getType().toString().contains(type));
+			require(!found.isEmpty(), type + " did not spawn");
+			return found.get(0);
+		});
+	}
+
+	private static void clearGolems(TestServerContext server) {
+		server.runCommand("kill @e[type=minecraft:iron_golem]");
+		server.runCommand("kill @e[type=minecraft:copper_golem]");
+		server.waitFor(srv -> srv.overworld().getEntitiesOfClass(PathfinderMob.class, new AABB(-16, 90, -16, 16, 116, 16),
+				m -> m.getType().toString().contains("golem")).isEmpty(), 100);
+	}
+
+	private void recruitingGolems(ClientGameTestContext context, TestServerContext server) throws Exception {
+		resetArena(server);
+		clearGolems(server);
+		makeKing(server);
+		Villager boss = spawnVillager(server, 0, 100, 0);
+		server.runOnServer(srv -> {
+			VillagerBrains.set(boss, VillagerBrain.DEFAULT.makeSmart("Alma"));
+			boss.setNoAi(true);
+		});
+		Villager plain = spawnVillager(server, 5, 100, 0);
+		PathfinderMob iron = spawnMob(server, "iron_golem", 10, 100, 0);
+		PathfinderMob copper = spawnMob(server, "copper_golem", 15, 100, 0);
+		server.runOnServer(srv -> {
+			plain.setNoAi(true);
+			iron.setNoAi(true);
+			copper.setNoAi(true);
+		});
+		// Only golems of the asked kind are recruited, however close the villager is.
+		CompletableFuture<String> ask = toolAsync(server, boss, "recruit", "{\"kind\":\"iron_golem\"}");
+		answerDialog(context, "Yes");
+		String result = awaitResult(server, ask, 100);
+		require(result.startsWith("ok: recruited") && result.contains("iron golem"), "recruit said " + result);
+		require(server.computeOnServer(srv -> VillagerBrains.get(iron).smart() && !VillagerBrains.get(iron).name().isEmpty()), "the iron golem is not smart");
+		require(server.computeOnServer(srv -> !VillagerBrains.get(plain).smart() && !VillagerBrains.get(copper).smart()), "someone else was recruited");
+		require(server.computeOnServer(srv -> iron.getCustomName() != null), "the golem shows no name");
+		CompletableFuture<String> ask2 = toolAsync(server, boss, "recruit", "{\"kind\":\"copper_golem\"}");
+		answerDialog(context, "Yes");
+		require(awaitResult(server, ask2, 100).contains("copper golem"), "the copper golem was not recruited");
+		require(server.computeOnServer(srv -> VillagerBrains.get(copper).smart()), "the copper golem is not smart");
+		String nobody = tool(server, boss, "recruit", "{\"kind\":\"iron_golem\"}", 50);
+		require(nobody.startsWith("failed"), "recruiting with no golem left said " + nobody);
+	}
+
+	private void smartGolemsObey(ClientGameTestContext context, TestServerContext server) throws Exception {
+		resetArena(server);
+		clearGolems(server);
+		makeKing(server);
+		for (String type : List.of("iron_golem", "copper_golem")) {
+			PathfinderMob golem = spawnMob(server, type, 0, 100, 0);
+			server.runOnServer(srv -> VillagerBrains.set(golem, VillagerBrain.DEFAULT.makeSmart("Rex")));
+			int id = server.computeOnServer(srv -> golem.getId());
+			ollama.script(toolCall("go_to", "{\"x\":8,\"y\":100,\"z\":0.5}"), reply("Here, " + type + "."));
+			int before = ollama.requests.size();
+			context.runOnClient(mc -> ClientPlayNetworking.send(new CommandPayload(id, "walk east")));
+			server.waitFor(srv -> golem.position().distanceTo(new Vec3(8, 100, 0.5)) <= 3.5, 1500);
+			require(distance(server, golem, 8, 100, 0.5) <= 3.5, type + " did not reach the target");
+			server.waitFor(srv -> ollama.requests.size() >= before + 2, 600);
+			String first = ollama.requests.get(before);
+			require(first.contains("a smart " + type.replace('_', ' ')), type + " was not told what it is");
+			clearGolems(server);
+		}
+	}
+
+	private void golemClicks(ClientGameTestContext context, TestServerContext server) throws Exception {
+		resetArena(server);
+		clearGolems(server);
+		makeKing(server);
+		PathfinderMob golem = spawnMob(server, "iron_golem", 0, 100, 0);
+		InteractionResult ordinary = server.computeOnServer(srv -> {
+			ServerPlayer p = srv.getPlayerList().getPlayers().get(0);
+			p.setShiftKeyDown(true);
+			InteractionResult r = UseEntityCallback.EVENT.invoker().interact(p, p.level(), InteractionHand.MAIN_HAND, golem, null);
+			p.setShiftKeyDown(false);
+			return r;
+		});
+		require(ordinary == InteractionResult.PASS, "an ordinary golem should stay vanilla, got " + ordinary);
+		server.runOnServer(srv -> VillagerBrains.set(golem, VillagerBrain.DEFAULT.makeSmart("Rex")));
+		InteractionResult smart = server.computeOnServer(srv -> {
+			ServerPlayer p = srv.getPlayerList().getPlayers().get(0);
+			p.setShiftKeyDown(true);
+			InteractionResult r = UseEntityCallback.EVENT.invoker().interact(p, p.level(), InteractionHand.MAIN_HAND, golem, null);
+			p.setShiftKeyDown(false);
+			return r;
+		});
+		require(smart == InteractionResult.SUCCESS_SERVER, "sneak-click on a smart golem was not handled: " + smart);
+		context.waitForScreen(VillagerChatScreen.class);
+		context.runOnClient(mc -> mc.gui.setScreen(null));
 	}
 
 	/** The key box: /villaging key opens it, typing and Enter save the key and the AI starts using it. */

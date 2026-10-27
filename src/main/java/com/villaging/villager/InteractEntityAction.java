@@ -10,7 +10,7 @@ import net.minecraft.world.entity.TamableAnimal;
 import net.minecraft.world.entity.animal.Animal;
 import net.minecraft.world.entity.animal.cow.AbstractCow;
 import net.minecraft.world.entity.animal.sheep.Sheep;
-import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -48,7 +48,7 @@ public final class InteractEntityAction implements VillagerAction {
 	}
 
 	@Override
-	public Status tick(Villager villager) {
+	public Status tick(PathfinderMob villager) {
 		if (!(villager.level() instanceof ServerLevel level)) {
 			return Status.failed("not in a server world");
 		}
@@ -87,7 +87,7 @@ public final class InteractEntityAction implements VillagerAction {
 		return afterInteraction(villager, level, result);
 	}
 
-	private Status afterInteraction(Villager villager, ServerLevel level, InteractionResult result) {
+	private Status afterInteraction(PathfinderMob villager, ServerLevel level, InteractionResult result) {
 		switch (kind) {
 			case SHEAR, MILK -> {
 				return result.consumesAction() ? Status.done(kind == Kind.SHEAR ? "sheared the sheep" : "milked the cow")
@@ -135,7 +135,7 @@ public final class InteractEntityAction implements VillagerAction {
 		};
 	}
 
-	private Item chooseItem(Villager villager) {
+	private Item chooseItem(PathfinderMob villager) {
 		VillagerInventory inventory = VillagerInventories.get(villager);
 		for (int i = 0; i < inventory.getContainerSize(); i++) {
 			ItemStack stack = inventory.getItem(i);
@@ -157,7 +157,7 @@ public final class InteractEntityAction implements VillagerAction {
 	}
 
 	/** The chosen animal, or the nearest suitable one; {@code partnerOf} restricts to the same type and not itself. */
-	private Entity findTarget(ServerLevel level, Villager villager, Entity partnerOf) {
+	private Entity findTarget(ServerLevel level, PathfinderMob villager, Entity partnerOf) {
 		if (partnerOf == null && entityId != null) {
 			Entity e = level.getEntity(entityId);
 			return e != null && suitable(e) && e.distanceTo(villager) <= SEARCH_RADIUS ? e : null;

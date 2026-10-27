@@ -18,21 +18,21 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 
 /** Runs the model's tool calls for one villager on the server main thread. */
 public final class MinecraftActionExecutor implements ActionExecutor {
 	private final MinecraftServer server;
-	private final Villager villager;
+	private final PathfinderMob villager;
 	private final UUID kingId;
 	private final VillagingConfig config;
 	/** Blocks this executor has been asked to break so far; many small jobs add up to mass destruction. */
 	private long destroyed;
 	private boolean massDestructionApproved;
 
-	public MinecraftActionExecutor(MinecraftServer server, Villager villager, UUID kingId, VillagingConfig config) {
+	public MinecraftActionExecutor(MinecraftServer server, PathfinderMob villager, UUID kingId, VillagingConfig config) {
 		this.server = server;
 		this.villager = villager;
 		this.kingId = kingId;

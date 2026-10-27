@@ -3,7 +3,9 @@
 	"package": "com.villaging.mixin",
 	"compatibilityLevel": "JAVA_25",
 	"mixins": [
-		"VillagerMixin"
+		"VillagerMixin",
+		"MobMixin",
+		"CopperGolemMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

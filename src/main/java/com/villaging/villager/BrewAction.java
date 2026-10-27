@@ -4,7 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -32,7 +32,7 @@ public final class BrewAction implements VillagerAction {
 	}
 
 	@Override
-	public Status tick(Villager villager) {
+	public Status tick(PathfinderMob villager) {
 		if (!(villager.level() instanceof ServerLevel level)) {
 			return Status.failed("not in a server world");
 		}
@@ -54,7 +54,7 @@ public final class BrewAction implements VillagerAction {
 		return Status.done("brewed " + potions.size() + " potion" + (potions.size() == 1 ? "" : "s") + ": " + String.join(", ", potions));
 	}
 
-	private Status prepare(Villager villager, ServerLevel level) {
+	private Status prepare(PathfinderMob villager, ServerLevel level) {
 		String name = new ItemStack(ingredient).getHoverName().getString();
 		if (pos == null) {
 			pos = Stations.find(level, villager.blockPosition(), Stations.RADIUS, s -> s.is(Blocks.BREWING_STAND));
@@ -115,7 +115,7 @@ public final class BrewAction implements VillagerAction {
 	}
 
 	/** Takes the bottles and any unused ingredient back to the villager; returns the potion names. */
-	private List<String> reclaim(Villager villager, ServerLevel level, BrewingStandBlockEntity stand) {
+	private List<String> reclaim(PathfinderMob villager, ServerLevel level, BrewingStandBlockEntity stand) {
 		VillagerInventory inventory = VillagerInventories.get(villager);
 		List<String> names = new ArrayList<>();
 		for (int slot = 0; slot <= SLOT_INGREDIENT; slot++) {
@@ -137,7 +137,7 @@ public final class BrewAction implements VillagerAction {
 	}
 
 	@Override
-	public void cancel(Villager villager) {
+	public void cancel(PathfinderMob villager) {
 		villager.getNavigation().stop();
 		if (loaded && villager.level() instanceof ServerLevel level
 				&& level.getBlockEntity(pos) instanceof BrewingStandBlockEntity stand) {

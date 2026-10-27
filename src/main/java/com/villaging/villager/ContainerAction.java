@@ -9,7 +9,7 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.Container;
 import net.minecraft.world.InteractionHand;
-import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.HopperBlockEntity;
@@ -42,7 +42,7 @@ public final class ContainerAction implements VillagerAction {
 	}
 
 	@Override
-	public Status tick(Villager villager) {
+	public Status tick(PathfinderMob villager) {
 		if (!(villager.level() instanceof ServerLevel level)) {
 			return Status.failed("not in a server world");
 		}
@@ -74,7 +74,7 @@ public final class ContainerAction implements VillagerAction {
 		};
 	}
 
-	private Status put(Villager villager, Container container, String where) {
+	private Status put(PathfinderMob villager, Container container, String where) {
 		VillagerInventory inventory = VillagerInventories.get(villager);
 		String name = new ItemStack(item).getHoverName().getString();
 		java.util.List<ItemStack> taken = inventory.take(item, count);
@@ -105,7 +105,7 @@ public final class ContainerAction implements VillagerAction {
 				+ (stored < count ? " (it filled up; kept the other " + (count - stored) + ")" : ""));
 	}
 
-	private Status take(Villager villager, Container container, String where) {
+	private Status take(PathfinderMob villager, Container container, String where) {
 		String name = new ItemStack(item).getHoverName().getString();
 		int available = 0;
 		for (int i = 0; i < container.getContainerSize(); i++) {

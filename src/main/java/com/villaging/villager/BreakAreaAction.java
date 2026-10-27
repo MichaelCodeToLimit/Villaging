@@ -9,7 +9,7 @@ import java.util.Queue;
 import java.util.UUID;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.entity.PathfinderMob;
 
 /** Break every block in a box, one at a time, nearest first; stops at the first block it cannot break. */
 public final class BreakAreaAction implements VillagerAction {
@@ -29,7 +29,7 @@ public final class BreakAreaAction implements VillagerAction {
 	}
 
 	@Override
-	public Status tick(Villager villager) {
+	public Status tick(PathfinderMob villager) {
 		if (!(villager.level() instanceof ServerLevel level)) {
 			return Status.failed("not in a server world");
 		}
@@ -65,7 +65,7 @@ public final class BreakAreaAction implements VillagerAction {
 	}
 
 	@Override
-	public void cancel(Villager villager) {
+	public void cancel(PathfinderMob villager) {
 		if (current != null) {
 			current.cancel(villager);
 		}

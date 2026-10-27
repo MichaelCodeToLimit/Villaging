@@ -7,13 +7,13 @@ import java.util.UUID;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.entity.PathfinderMob;
 
 /** Shows a villager's reply in the king's chat and as a short-lived speech bubble over its head. */
 public final class VillagerSpeech {
 	private static final int BUBBLE_TICKS = 120;
 
-	private record Bubble(Villager villager, long expiresAt) {
+	private record Bubble(PathfinderMob villager, long expiresAt) {
 	}
 
 	private static final Map<UUID, Bubble> BUBBLES = new HashMap<>();
@@ -21,7 +21,7 @@ public final class VillagerSpeech {
 	private VillagerSpeech() {
 	}
 
-	public static void say(MinecraftServer server, Villager villager, UUID kingId, String text) {
+	public static void say(MinecraftServer server, PathfinderMob villager, UUID kingId, String text) {
 		if (villager.isRemoved() || !villager.isAlive()) {
 			return;
 		}
@@ -37,7 +37,7 @@ public final class VillagerSpeech {
 	}
 
 	/** Puts the villager's real name back if (and only if) it is currently showing a speech bubble. */
-	public static void heal(Villager villager) {
+	public static void heal(PathfinderMob villager) {
 		VillagerBrain brain = VillagerBrains.get(villager);
 		if (!brain.smart() || villager.getCustomName() == null) {
 			return;
@@ -49,7 +49,7 @@ public final class VillagerSpeech {
 
 	public static void tick() {
 		for (Bubble b : new ArrayList<>(BUBBLES.values())) {
-			Villager v = b.villager();
+			PathfinderMob v = b.villager();
 			if (v.isRemoved()) {
 				BUBBLES.remove(v.getUUID());
 			} else if (v.level().getGameTime() >= b.expiresAt()) {
