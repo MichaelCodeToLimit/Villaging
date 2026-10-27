@@ -33,6 +33,7 @@ public final class ToolHandlers {
 		ItemHandlers.register();
 		ContainerHandlers.register();
 		CraftHandlers.register();
+		GatherHandlers.register();
 	}
 
 	/** Registers the Foundation tools; safe to call more than once. */

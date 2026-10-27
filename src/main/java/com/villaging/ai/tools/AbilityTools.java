@@ -12,5 +12,6 @@ public final class AbilityTools {
 		ItemTools.register();
 		ContainerTools.register();
 		CraftTools.register();
+		GatherTools.register();
 	}
 }

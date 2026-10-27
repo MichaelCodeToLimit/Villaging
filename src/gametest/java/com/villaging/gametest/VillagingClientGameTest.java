@@ -131,6 +131,10 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 			attempt("craft makes small recipes anywhere and big ones at a table", () -> craftTools(server));
 			attempt("smelt cooks raw iron in a furnace", () -> smeltTool(server));
 			attempt("brew makes potions in a brewing stand", () -> brewTool(server));
+			attempt("chop_tree fells a tree", () -> chopTree(server));
+			attempt("till, plant and harvest farm a crop", () -> farming(server));
+			attempt("shear, milk, breed and tame work on animals", () -> animals(server));
+			attempt("fish catches something near water", () -> fishing(server));
 			attempt("container tools look in, fill and empty a chest", () -> containerTools(server));
 			attempt("a command from a non-king is ignored", () -> forgedPacket(context, server));
 		} finally {
@@ -719,6 +723,90 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 		require(result.startsWith("ok: brewed 2") && result.toLowerCase().contains("awkward"), "brew said " + result);
 		require(villagerCount(server, v, Items.NETHER_WART) == 0 && villagerCount(server, v, Items.BLAZE_POWDER) == 0, "ingredient or fuel not used");
 		require(tool(server, v, "brew", "{\"item\":\"minecraft:nether_wart\"}", 100).startsWith("failed"), "brewing with nothing should fail");
+	}
+
+	private void chopTree(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		server.runCommand("fill 4 100 0 4 103 0 minecraft:oak_log");
+		server.runCommand("setblock 4 104 0 minecraft:oak_leaves");
+		Villager v = spawnVillager(server, 0, 100, 0);
+		String result = tool(server, v, "chop_tree", "{\"x\":4,\"y\":100,\"z\":0}", 3000);
+		require(result.startsWith("ok: chopped 4"), "chop_tree said " + result);
+		require(server.computeOnServer(srv -> srv.overworld().getBlockState(new BlockPos(4, 103, 0)).isAir()), "the top log is still there");
+		require(tool(server, v, "chop_tree", "{\"x\":9,\"y\":100,\"z\":0}", 100).contains("no log"), "chopping thin air should fail");
+	}
+
+	private void farming(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		server.runCommand("setblock 3 99 0 minecraft:dirt");
+		Villager v = spawnVillager(server, 0, 100, 0);
+		require(tool(server, v, "till", "{\"x\":3,\"y\":99,\"z\":0}", 100).contains("hoe"), "tilling without a hoe should fail");
+		server.runOnServer(srv -> {
+			VillagerInventories.get(v).addItem(new ItemStack(Items.IRON_HOE, 1));
+			VillagerInventories.get(v).addItem(new ItemStack(Items.WHEAT_SEEDS, 2));
+		});
+		String tilled = tool(server, v, "till", "{\"x\":3,\"y\":99,\"z\":0}", 400);
+		require(tilled.startsWith("ok: tilled"), "till said " + tilled);
+		require(server.computeOnServer(srv -> srv.overworld().getBlockState(new BlockPos(3, 99, 0)).is(Blocks.FARMLAND)), "no farmland");
+		String planted = tool(server, v, "plant", "{\"item\":\"minecraft:wheat_seeds\",\"x\":3,\"y\":100,\"z\":0}", 400);
+		require(planted.startsWith("ok: placed"), "plant said " + planted);
+		require(server.computeOnServer(srv -> srv.overworld().getBlockState(new BlockPos(3, 100, 0)).is(Blocks.WHEAT)), "no wheat");
+		require(tool(server, v, "harvest", "{\"x\":3,\"y\":100,\"z\":0}", 100).contains("not ripe"), "a young crop was harvested");
+		server.runCommand("setblock 3 100 0 minecraft:wheat[age=7]");
+		String harvested = tool(server, v, "harvest", "{\"x\":3,\"y\":100,\"z\":0}", 800);
+		require(harvested.contains("replanted"), "harvest said " + harvested);
+		require(server.computeOnServer(srv -> srv.overworld().getBlockState(new BlockPos(3, 100, 0)).is(Blocks.WHEAT)), "crop was not replanted");
+	}
+
+	private void animals(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager v = spawnVillager(server, 0, 100, 0);
+		// shear
+		server.runCommand("summon minecraft:sheep 2 100 1 {NoAI:1b}");
+		require(tool(server, v, "shear", "{}", 100).contains("shears"), "shearing without shears should fail");
+		server.runOnServer(srv -> VillagerInventories.get(v).addItem(new ItemStack(Items.SHEARS, 1)));
+		String sheared = tool(server, v, "shear", "{}", 600);
+		require(sheared.startsWith("ok: sheared"), "shear said " + sheared);
+		require(server.computeOnServer(srv -> srv.overworld().getEntitiesOfClass(
+				net.minecraft.world.entity.animal.sheep.Sheep.class, new AABB(-8, 95, -8, 8, 110, 8)).get(0).isSheared()), "the sheep was not sheared");
+		server.runCommand("kill @e[type=minecraft:sheep]");
+		// milk
+		server.runCommand("summon minecraft:cow 2 100 1 {NoAI:1b}");
+		server.runOnServer(srv -> VillagerInventories.get(v).addItem(new ItemStack(Items.BUCKET, 1)));
+		String milked = tool(server, v, "milk", "{}", 600);
+		require(milked.startsWith("ok: milked"), "milk said " + milked);
+		require(villagerCount(server, v, Items.MILK_BUCKET) == 1 && villagerCount(server, v, Items.BUCKET) == 0, "the bucket was not filled");
+		server.runCommand("kill @e[type=minecraft:cow]");
+		// breed
+		server.runCommand("summon minecraft:cow 2 100 1 {NoAI:1b}");
+		server.runCommand("summon minecraft:cow 3 100 3 {NoAI:1b}");
+		server.runOnServer(srv -> VillagerInventories.get(v).addItem(new ItemStack(Items.WHEAT, 4)));
+		String bred = tool(server, v, "breed", "{}", 900);
+		require(bred.contains("fed 2"), "breed said " + bred);
+		require(2 == server.computeOnServer(srv -> srv.overworld().getEntitiesOfClass(net.minecraft.world.entity.animal.Animal.class,
+				new AABB(-8, 95, -8, 8, 110, 8), a -> a.isInLove()).size()), "both cows should be in love");
+		server.runCommand("kill @e[type=minecraft:cow]");
+		// tame
+		server.runCommand("summon minecraft:wolf 2 100 1 {NoAI:1b}");
+		server.runOnServer(srv -> VillagerInventories.get(v).addItem(new ItemStack(Items.BONE, 32)));
+		String tamed = tool(server, v, "tame", "{}", 1200);
+		require(tamed.startsWith("ok: tamed"), "tame said " + tamed);
+		require(tool(server, v, "shear", "{}", 100).startsWith("failed"), "no sheep is left to shear");
+	}
+
+	private void fishing(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		server.runCommand("fill 2 100 2 4 100 4 minecraft:water");
+		Villager v = spawnVillager(server, 0, 100, 0);
+		require(tool(server, v, "fish", "{\"seconds\":20}", 100).contains("rod"), "fishing without a rod should fail");
+		server.runOnServer(srv -> VillagerInventories.get(v).addItem(new ItemStack(Items.FISHING_ROD, 1)));
+		String result = tool(server, v, "fish", "{\"seconds\":20}", 900);
+		require(result.startsWith("ok: caught 1"), "fish said " + result);
+		require(villagerCount(server, v, Items.FISHING_ROD) == 1, "the rod should survive one catch");
 	}
 
 	private static String toolCall(String name, String argsJson) {
