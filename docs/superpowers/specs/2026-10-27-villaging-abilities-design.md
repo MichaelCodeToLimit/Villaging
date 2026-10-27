@@ -70,7 +70,7 @@ through `ActionExecutor`, and return a result string the model reads. Failures r
 | Option | Default | Meaning |
 |---|---|---|
 | `respectProtection` | `true` | `true`: spawn protection, protection mods, world border and `actionRange` apply to villagers as they do to players. `false`: those checks are skipped. |
-| `allowBreakBedrock` | `false` | Whether villagers may break bedrock. Separate from `respectProtection`. |
+| `allowBreakBedrock` | `false` | Bedrock can only be broken by a creative-mode player in vanilla. `true`: villagers may break bedrock as a creative player can (including other unbreakable blocks such as barriers). `false`: survival rules, so they cannot. Separate from `respectProtection`. |
 
 Never hurting players or pets is not a setting.
 
