@@ -144,6 +144,7 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 			attempt("a risky step inside a script still asks the king", () -> scriptRiskyStepAsks(context, server));
 			attempt("a commander relays orders only with the king's approval", () -> commanderRelay(context, server));
 			attempt("container tools look in, fill and empty a chest", () -> containerTools(server));
+			attempt("end to end: one order becomes a script that builds a chest", () -> getLogsAndMakeAChest(context, server));
 			attempt("a command from a non-king is ignored", () -> forgedPacket(context, server));
 		} finally {
 			ollama.close();
@@ -1063,6 +1064,34 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 		VillagerBrain heard = server.computeOnServer(srv -> VillagerBrains.get(bram));
 		require(heard.memory().contains("king: gather some wood"), "Bram's memory lacks the order: " + heard.memory());
 		require(ollama.requests.size() >= 1 && ollama.requests.get(0).contains("gather some wood"), "the model never saw the relayed order");
+	}
+
+	/** One typed command, one model call that writes a script, and a finished chest at the end. */
+	private void getLogsAndMakeAChest(ClientGameTestContext context, TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		server.runCommand("fill 4 100 0 4 103 0 minecraft:oak_log");
+		server.runCommand("setblock -3 100 0 minecraft:crafting_table");
+		Villager v = spawnVillager(server, 0, 100, 0);
+		server.runOnServer(srv -> VillagerBrains.set(v, VillagerBrain.DEFAULT.makeSmart("Alma")));
+		int id = server.computeOnServer(srv -> v.getId());
+		String script = "{\"steps\":["
+				+ "{\"tool\":\"chop_tree\",\"args\":{\"x\":4,\"y\":100,\"z\":0}},"
+				+ "{\"tool\":\"pick_up\",\"args\":{\"item\":\"minecraft:oak_log\"}},"
+				+ "{\"tool\":\"craft\",\"args\":{\"item\":\"minecraft:oak_planks\",\"count\":8}},"
+				+ "{\"tool\":\"craft\",\"args\":{\"item\":\"minecraft:chest\",\"count\":1}},"
+				+ "{\"tool\":\"place_block\",\"args\":{\"item\":\"minecraft:chest\",\"x\":3,\"y\":100,\"z\":1}}]}";
+		com.google.gson.JsonObject scriptArgs = new com.google.gson.JsonObject();
+		scriptArgs.addProperty("script", script);
+		ollama.script(toolCall("run_script", scriptArgs.toString()), reply("Your chest is ready, my king."));
+		context.runOnClient(mc -> ClientPlayNetworking.send(new CommandPayload(id, "get some logs and make me a chest")));
+		server.waitFor(srv -> srv.overworld().getBlockState(new BlockPos(3, 100, 1)).is(Blocks.CHEST), 6000);
+		context.takeScreenshot("villaging-chest-built");
+		require(server.computeOnServer(srv -> srv.overworld().getBlockState(new BlockPos(3, 100, 1)).is(Blocks.CHEST)), "no chest was built");
+		server.waitFor(srv -> ollama.requests.size() >= 2, 600);
+		require(ollama.requests.size() == 2, "expected exactly 2 model calls (the order, then the result), saw " + ollama.requests.size());
+		require(ollama.requests.get(1).contains("ok: ran 5 steps"), "the model was not told the script finished: " + ollama.requests.get(1));
+		require(server.computeOnServer(srv -> v.getCustomName() != null), "the villager lost its name");
 	}
 
 	private static String toolCall(String name, String argsJson) {
