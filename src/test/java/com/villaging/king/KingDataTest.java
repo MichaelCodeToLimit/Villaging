@@ -46,6 +46,25 @@ class KingDataTest {
 	}
 
 	@Test
+	void titleDefaultsToKingAndCanBeChanged() {
+		KingData claimed = KingData.EMPTY.claim(alice).orElseThrow();
+		assertEquals("King", claimed.title());
+		KingData renamed = claimed.withTitle("Boss");
+		assertEquals("Boss", renamed.title());
+		assertTrue(renamed.isKing(alice));
+		assertEquals("Boss", renamed.claim(alice).orElseThrow().title());
+	}
+
+	@Test
+	void titleSurvivesTheCodecAndOldDataGetsTheDefault() {
+		KingData data = KingData.EMPTY.claim(alice).orElseThrow().withTitle("Sire");
+		JsonElement json = KingData.CODEC.encodeStart(JsonOps.INSTANCE, data).getOrThrow();
+		assertEquals(data, KingData.CODEC.parse(JsonOps.INSTANCE, json).getOrThrow());
+		JsonElement old = com.google.gson.JsonParser.parseString("{\"king\":\"" + alice + "\"}");
+		assertEquals("King", KingData.CODEC.parse(JsonOps.INSTANCE, old).getOrThrow().title());
+	}
+
+	@Test
 	void kingDataSurvivesCodecRoundTrip() {
 		KingData claimed = KingData.EMPTY.claim(alice).orElseThrow();
 		JsonElement json = KingData.CODEC.encodeStart(JsonOps.INSTANCE, claimed).getOrThrow();

@@ -152,6 +152,11 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 			attempt("review: no shooting through the king", () -> reviewLineOfFire(server));
 			attempt("end to end: one order becomes a script that builds a chest", () -> getLogsAndMakeAChest(context, server));
 			attempt("a command from a non-king is ignored", () -> forgedPacket(context, server));
+			attempt("speaking to an ordinary villager makes it smart (and the speaker king)", () -> speakingToAnOrdinaryVillager(context, server));
+			attempt("sneak-click opens the chat on an ordinary villager", () -> sneakClickOnAnOrdinaryVillager(context, server));
+			attempt("rename and the king's title reach the villager and the prompt", () -> renameAndKingTitle(context, server));
+			attempt("recruit asks the king and makes the nearest villagers smart", () -> recruiting(context, server));
+			attempt("the key box opens with /villaging key and saves the key", () -> keyBox(context, server));
 		} finally {
 			ollama.close();
 		}
@@ -1425,6 +1430,145 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 						+ " | stoneStillThere=" + srv.overworld().getBlockState(new BlockPos(0, 101, 6)).is(Blocks.STONE);
 			});
 			System.out.println("[villaging-real] \"" + phrase + "\" -> " + summary);
+		}
+	}
+
+	private static void noKing(TestServerContext server) {
+		server.runOnServer(srv -> srv.overworld().setAttached(Kings.ATTACHMENT, KingData.EMPTY));
+	}
+
+	private void speakingToAnOrdinaryVillager(ClientGameTestContext context, TestServerContext server) throws Exception {
+		resetArena(server);
+		noKing(server);
+		Villager v = spawnVillager(server, 0, 100, 0);
+		int id = server.computeOnServer(srv -> v.getId());
+		ollama.script(reply("Gladly, my king."));
+		context.runOnClient(mc -> ClientPlayNetworking.send(new CommandPayload(id, "hello there, be my helper")));
+		server.waitFor(srv -> VillagerBrains.get(v).smart() && VillagerBrains.get(v).memory().size() >= 2, 600);
+		require(server.computeOnServer(srv -> Kings.isKing(srv, playerId(server))), "the first speaker did not become king");
+		require(!server.computeOnServer(srv -> VillagerBrains.get(v).name().isEmpty()), "the new smart villager has no name");
+		require(ollama.requests.size() == 1 && ollama.requests.get(0).contains("be my helper"), "the model never got the message");
+
+		// With another king in place, an ordinary villager stays ordinary.
+		resetArena(server);
+		noKing(server);
+		server.runOnServer(srv -> Kings.claim(srv, UUID.randomUUID()));
+		Villager other = spawnVillager(server, 0, 100, 0);
+		int otherId = server.computeOnServer(srv -> other.getId());
+		int before = ollama.requests.size();
+		context.runOnClient(mc -> ClientPlayNetworking.send(new CommandPayload(otherId, "hello")));
+		context.waitTicks(60);
+		require(!server.computeOnServer(srv -> VillagerBrains.get(other).smart()), "a non-king made a villager smart");
+		require(ollama.requests.size() == before, "a non-king reached the model");
+	}
+
+	private void sneakClickOnAnOrdinaryVillager(ClientGameTestContext context, TestServerContext server) {
+		resetArena(server);
+		noKing(server);
+		Villager v = spawnVillager(server, 0, 100, 0);
+		InteractionResult sneaking = server.computeOnServer(srv -> {
+			ServerPlayer p = srv.getPlayerList().getPlayers().get(0);
+			p.setShiftKeyDown(true);
+			InteractionResult r = UseEntityCallback.EVENT.invoker().interact(p, p.level(), InteractionHand.MAIN_HAND, v, null);
+			p.setShiftKeyDown(false);
+			return r;
+		});
+		require(sneaking == InteractionResult.SUCCESS_SERVER, "sneak-click on an ordinary villager was not handled: " + sneaking);
+		context.waitForScreen(VillagerChatScreen.class);
+		context.runOnClient(mc -> mc.gui.setScreen(null));
+		// Someone else is king: vanilla behaviour stays.
+		server.runOnServer(srv -> Kings.claim(srv, UUID.randomUUID()));
+		InteractionResult other = server.computeOnServer(srv -> {
+			ServerPlayer p = srv.getPlayerList().getPlayers().get(0);
+			p.setShiftKeyDown(true);
+			InteractionResult r = UseEntityCallback.EVENT.invoker().interact(p, p.level(), InteractionHand.MAIN_HAND, v, null);
+			p.setShiftKeyDown(false);
+			return r;
+		});
+		require(other == InteractionResult.PASS, "a non-king sneak-click should stay vanilla, got " + other);
+	}
+
+	private void renameAndKingTitle(ClientGameTestContext context, TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager alma = spawnVillager(server, 0, 100, 0);
+		Villager bram = spawnVillager(server, 3, 100, 0);
+		server.runOnServer(srv -> {
+			VillagerBrains.set(alma, VillagerBrain.DEFAULT.makeSmart("Alma"));
+			VillagerBrains.set(bram, VillagerBrain.DEFAULT.makeSmart("Bram"));
+		});
+		require(tool(server, alma, "rename", "{\"new_name\":\"Garrick\"}", 50).startsWith("ok"), "self rename failed");
+		require(server.computeOnServer(srv -> VillagerBrains.get(alma).name().equals("Garrick")), "the brain kept the old name");
+		require(server.computeOnServer(srv -> alma.getCustomName().getString().equals("Garrick")), "the name tag kept the old name");
+		require(tool(server, alma, "rename", "{\"new_name\":\"Odo\",\"villager_name\":\"Bram\"}", 50).startsWith("ok"), "renaming another failed");
+		require(server.computeOnServer(srv -> VillagerBrains.get(bram).name().equals("Odo")), "Bram was not renamed");
+		require(tool(server, alma, "rename", "{\"new_name\":\"odo\"}", 50).contains("already called"), "a duplicate name was accepted");
+		require(tool(server, alma, "rename", "{\"new_name\":\"X\",\"villager_name\":\"Nobody\"}", 50).contains("can't find"), "an unknown villager was renamed");
+
+		require(tool(server, alma, "set_king_title", "{\"title\":\"Boss\",\"scope\":\"everyone\"}", 50).startsWith("ok"), "world title failed");
+		require(server.computeOnServer(srv -> Kings.title(srv).equals("Boss")), "the world title was not saved");
+		ollama.script(reply("Yes, Boss."));
+		int id = server.computeOnServer(srv -> alma.getId());
+		context.runOnClient(mc -> ClientPlayNetworking.send(new CommandPayload(id, "hi")));
+		server.waitFor(srv -> !ollama.requests.isEmpty(), 600);
+		require(ollama.requests.get(ollama.requests.size() - 1).contains("call the king \\\"Boss\\\""), "the prompt does not use the new title");
+
+		require(tool(server, alma, "set_king_title", "{\"title\":\"Sire\",\"scope\":\"me\"}", 50).startsWith("ok"), "own title failed");
+		require(server.computeOnServer(srv -> VillagerBrains.get(alma).kingTitle().equals("Sire")), "the own title was not saved");
+		require(server.computeOnServer(srv -> VillagerBrains.get(bram).kingTitle().isEmpty()), "another villager's title changed");
+		server.runOnServer(srv -> Kings.setTitle(srv, "King"));
+	}
+
+	private void recruiting(ClientGameTestContext context, TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager boss = spawnVillager(server, 0, 100, 0);
+		server.runOnServer(srv -> VillagerBrains.set(boss, VillagerBrain.DEFAULT.makeSmart("Alma")));
+		Villager a = spawnVillager(server, 5, 100, 0);
+		Villager b = spawnVillager(server, 10, 100, 0);
+		Villager c = spawnVillager(server, 15, 100, 0);
+		for (Villager v : List.of(boss, a, b, c)) {
+			server.runOnServer(srv -> v.setNoAi(true));
+		}
+		CompletableFuture<String> refused = toolAsync(server, boss, "recruit", "{\"count\":2}");
+		answerDialog(context, "No");
+		require(awaitResult(server, refused, 100).contains("the king said no"), "a no was not reported");
+		require(server.computeOnServer(srv -> !VillagerBrains.get(a).smart() && !VillagerBrains.get(b).smart()), "villagers were recruited after a no");
+		CompletableFuture<String> approved = toolAsync(server, boss, "recruit", "{\"count\":2}");
+		answerDialog(context, "Yes");
+		String result = awaitResult(server, approved, 100);
+		require(result.startsWith("ok: recruited"), "recruit said " + result);
+		int smart = server.computeOnServer(srv -> (int) List.of(a, b, c).stream().filter(v -> VillagerBrains.get(v).smart()).count());
+		require(smart == 2, "expected exactly 2 recruits, got " + smart);
+		require(server.computeOnServer(srv -> VillagerBrains.get(a).smart() && VillagerBrains.get(b).smart() && !VillagerBrains.get(c).smart()),
+				"the two nearest villagers should be the recruits");
+		require(server.computeOnServer(srv -> !VillagerBrains.get(a).name().equalsIgnoreCase(VillagerBrains.get(b).name())), "recruits share a name");
+	}
+
+	/** The key box: /villaging key opens it, typing and Enter save the key and the AI starts using it. */
+	private void keyBox(ClientGameTestContext context, TestServerContext server) throws Exception {
+		VillagingConfig original = server.computeOnServer(srv -> com.villaging.Villaging.runtime().config());
+		try {
+			server.runCommand("execute as @p run villaging key");
+			context.waitForScreen(com.villaging.client.KeyScreen.class);
+			context.takeScreenshot("villaging-key-box");
+			context.runOnClient(mc -> ((com.villaging.client.KeyScreen) mc.gui.screen()).chooseProvider("gemini"));
+			context.getInput().typeChars("test-key-123");
+			context.getInput().pressKey(GLFW.GLFW_KEY_ENTER);
+			server.waitFor(srv -> "test-key-123".equals(com.villaging.Villaging.runtime().config().apiKey()), 200);
+			VillagingConfig saved = VillagingConfig.load(com.villaging.Villaging.configFile());
+			require(saved.apiKey().equals("test-key-123"), "the key was not written to the config file");
+			require(!saved.provider().equals("ollama"), "the provider was not switched to a keyed one: " + saved.provider());
+		} finally {
+			server.runOnServer(srv -> {
+				try {
+					original.save(com.villaging.Villaging.configFile());
+				} catch (IOException e) {
+					throw new RuntimeException(e);
+				}
+				com.villaging.Villaging.replaceRuntime(new com.villaging.command.VillagingRuntime(srv, original));
+			});
+			context.runOnClient(mc -> mc.gui.setScreen(null));
 		}
 	}
 

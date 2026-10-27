@@ -5,6 +5,12 @@ import com.villaging.command.VillagingRuntime;
 import com.villaging.config.VillagingConfig;
 import com.villaging.king.CrownItem;
 import com.villaging.king.Kings;
+import com.villaging.command.KeySettings;
+import com.villaging.net.OpenKeyPayload;
+import com.villaging.net.SetKeyPayload;
+import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
+import net.minecraft.commands.Commands;
 import com.villaging.net.AnswerPayload;
 import com.villaging.net.AskPayload;
 import com.villaging.net.CommandPayload;
@@ -46,6 +52,19 @@ public class Villaging implements ModInitializer {
 		return runtime;
 	}
 
+	public static java.nio.file.Path configFile() {
+		return FabricLoader.getInstance().getConfigDir().resolve("villaging.json");
+	}
+
+	/** Swaps in a runtime built from new settings (the key box) and stops the old one. */
+	public static void replaceRuntime(VillagingRuntime replacement) {
+		VillagingRuntime old = runtime;
+		runtime = replacement;
+		if (old != null) {
+			old.shutdown();
+		}
+	}
+
 	@Override
 	public void onInitialize() {
 		ModItems.init();
@@ -60,9 +79,38 @@ public class Villaging implements ModInitializer {
 		PayloadTypeRegistry.clientboundPlay().register(OpenChatPayload.TYPE, OpenChatPayload.CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(AskPayload.TYPE, AskPayload.CODEC);
 		PayloadTypeRegistry.serverboundPlay().register(AnswerPayload.TYPE, AnswerPayload.CODEC);
+		PayloadTypeRegistry.clientboundPlay().register(OpenKeyPayload.TYPE, OpenKeyPayload.CODEC);
+		PayloadTypeRegistry.serverboundPlay().register(SetKeyPayload.TYPE, SetKeyPayload.CODEC);
 
 		ServerLifecycleEvents.SERVER_STARTED.register(server -> runtime = new VillagingRuntime(server,
-				VillagingConfig.load(FabricLoader.getInstance().getConfigDir().resolve("villaging.json"))));
+				VillagingConfig.load(configFile())));
+
+		// The AI key is typed into a box in game. It opens by itself when smart villagers have no working AI yet,
+		// and any time with /villaging key.
+		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
+			VillagingRuntime current = runtime;
+			if (current != null && !current.problem().isEmpty() && KeySettings.mayChange(server, handler.getPlayer())) {
+				ServerPlayNetworking.send(handler.getPlayer(), new OpenKeyPayload(current.config().provider()));
+			}
+		});
+		CommandRegistrationCallback.EVENT.register((dispatcher, buildContext, selection) ->
+				dispatcher.register(Commands.literal("villaging").then(Commands.literal("key").executes(context -> {
+					ServerPlayer player = context.getSource().getPlayerOrException();
+					if (!KeySettings.mayChange(context.getSource().getServer(), player)) {
+						player.sendSystemMessage(Component.literal("Only the world owner or an admin can change the AI key."));
+						return 0;
+					}
+					VillagingRuntime current = runtime;
+					ServerPlayNetworking.send(player,
+							new OpenKeyPayload(current != null ? current.config().provider() : "cloud"));
+					return 1;
+				}))));
+		ServerPlayNetworking.registerGlobalReceiver(SetKeyPayload.TYPE, (payload, context) -> {
+			// The key is never logged or echoed back.
+			ServerPlayer player = context.player();
+			player.sendSystemMessage(Component.literal(
+					KeySettings.apply(context.server(), player, payload.provider(), payload.key())));
+		});
 		ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
 			VillagingRuntime current = runtime;
 			runtime = null;
@@ -104,8 +152,11 @@ public class Villaging implements ModInitializer {
 				return InteractionResult.PASS;
 			}
 			VillagerBrain brain = VillagerBrains.get(villager);
-			if (brain.smart() && player.isShiftKeyDown() && Kings.isKing(level.getServer(), sp.getUUID())) {
-				ServerPlayNetworking.send(sp, new OpenChatPayload(villager.getId(), brain.name()));
+			// Sneak + right-click on any villager opens the box; speaking to an ordinary one makes it smart.
+			boolean mayCommand = Kings.isKing(level.getServer(), sp.getUUID()) || Kings.get(level.getServer()).king().isEmpty();
+			if (player.isShiftKeyDown() && mayCommand) {
+				ServerPlayNetworking.send(sp, new OpenChatPayload(villager.getId(),
+						brain.smart() ? brain.name() : "this villager"));
 				return InteractionResult.SUCCESS_SERVER;
 			}
 			if (sp.getItemInHand(hand).is(ModItems.CROWN)) {

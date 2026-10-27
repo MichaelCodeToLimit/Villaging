@@ -68,6 +68,20 @@ class VillagerBrainTest {
 	}
 
 	@Test
+	void renameAndKingTitleSurviveTheCodec() {
+		VillagerBrain original = VillagerBrain.DEFAULT.makeSmart("Alma").withName("Garrick").withKingTitle("Boss");
+		assertEquals("Garrick", original.name());
+		assertEquals("Boss", original.kingTitle());
+		JsonElement json = VillagerBrain.CODEC.encodeStart(JsonOps.INSTANCE, original).getOrThrow();
+		assertEquals(original, VillagerBrain.CODEC.parse(JsonOps.INSTANCE, json).getOrThrow());
+	}
+
+	@Test
+	void kingTitleDefaultsToEmptyMeaningTheWorldTitle() {
+		assertEquals("", VillagerBrain.DEFAULT.kingTitle());
+	}
+
+	@Test
 	void oldDataWithoutNewFieldsDecodesToDefaults() {
 		JsonElement json = com.google.gson.JsonParser.parseString("{\"smart\":true,\"name\":\"Bob\"}");
 		VillagerBrain decoded = VillagerBrain.CODEC.parse(JsonOps.INSTANCE, json).getOrThrow();

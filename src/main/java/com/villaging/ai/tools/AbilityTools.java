@@ -17,5 +17,6 @@ public final class AbilityTools {
 		MoveTools.register();
 		ScriptTools.register();
 		CommandTools.register();
+		PeopleTools.register();
 	}
 }

@@ -38,6 +38,7 @@ public final class ToolHandlers {
 		MoveHandlers.register();
 		ScriptHandlers.register();
 		RelayHandlers.register();
+		PeopleHandlers.register();
 	}
 
 	/** Registers the Foundation tools; safe to call more than once. */

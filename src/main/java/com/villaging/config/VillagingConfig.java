@@ -68,6 +68,18 @@ public record VillagingConfig(
 		}
 	}
 
+	/** A copy using the given provider and key (the in-game key box). */
+	public VillagingConfig withKey(String newProvider, String newKey) {
+		return new VillagingConfig(newProvider, newKey, model, cloudUrl, ollamaUrl, ollamaModel, geminiModel, geminiUrl,
+				maxSteps, callsPerMinute, actionRange, respectProtection, allowBreakBedrock, maxScriptSteps,
+				maxScriptSeconds, maxScriptDepth);
+	}
+
+	public void save(Path file) throws IOException {
+		Files.createDirectories(file.toAbsolutePath().getParent());
+		Files.writeString(file, GSON.toJson(this));
+	}
+
 	public boolean isUsable() {
 		return problem().isEmpty();
 	}
@@ -75,8 +87,8 @@ public record VillagingConfig(
 	/** Human-readable fix hint, empty when the config is usable. */
 	public String problem() {
 		return switch (provider) {
-			case "cloud" -> apiKey.isBlank() ? "Set \"apiKey\" in config/villaging.json to use the cloud AI." : "";
-			case "gemini" -> apiKey.isBlank() ? "Set \"apiKey\" in config/villaging.json to use Gemini." : "";
+			case "cloud" -> apiKey.isBlank() ? "Enter your apiKey with /villaging key (or in config/villaging.json) to use the cloud AI." : "";
+			case "gemini" -> apiKey.isBlank() ? "Enter your apiKey with /villaging key (or in config/villaging.json) to use Gemini." : "";
 			case "ollama" -> ollamaUrl.isBlank() ? "Set \"ollamaUrl\" in config/villaging.json." : "";
 			default -> "Unknown \"provider\" \"" + provider + "\" in config/villaging.json; use \"cloud\", \"gemini\" or \"ollama\".";
 		};

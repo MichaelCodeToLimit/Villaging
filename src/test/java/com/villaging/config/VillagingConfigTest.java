@@ -100,6 +100,22 @@ class VillagingConfigTest {
 	}
 
 	@Test
+	void withKeySetsProviderAndKeyAndSurvivesSaveAndLoad() throws Exception {
+		Path file = dir.resolve("villaging.json");
+		VillagingConfig saved = VillagingConfig.defaults().withKey("gemini", "secret-key");
+		assertEquals("gemini", saved.provider());
+		assertEquals("secret-key", saved.apiKey());
+		assertTrue(saved.isUsable());
+		saved.save(file);
+		assertEquals(saved, VillagingConfig.load(file));
+	}
+
+	@Test
+	void unusableConfigMentionsTheInGameKeyBox() {
+		assertTrue(VillagingConfig.defaults().problem().contains("/villaging key"));
+	}
+
+	@Test
 	void nonPositiveScriptLimitsFallBackToDefaults() throws Exception {
 		Path file = dir.resolve("villaging.json");
 		Files.writeString(file, "{\"maxScriptSteps\":0,\"maxScriptSeconds\":-5,\"maxScriptDepth\":0}");

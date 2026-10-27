@@ -27,6 +27,14 @@ public final class Kings {
 		return get(server).isKing(player);
 	}
 
+	public static String title(MinecraftServer server) {
+		return get(server).title();
+	}
+
+	public static void setTitle(MinecraftServer server, String title) {
+		server.overworld().setAttached(ATTACHMENT, get(server).withTitle(title));
+	}
+
 	/** True if the player is now king (newly claimed or already king). */
 	public static boolean claim(MinecraftServer server, UUID player) {
 		Optional<KingData> claimed = get(server).claim(player);

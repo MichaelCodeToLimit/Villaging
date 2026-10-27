@@ -1,8 +1,8 @@
 package com.villaging.king;
 
+import com.villaging.villager.Smartify;
 import com.villaging.villager.VillagerBrain;
 import com.villaging.villager.VillagerBrains;
-import java.util.List;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
@@ -16,8 +16,6 @@ import net.minecraft.world.level.Level;
 
 /** Using the crown in the air claims kingship; using it on a villager makes that villager smart. */
 public class CrownItem extends Item {
-	private static final List<String> NAMES = List.of("Bob", "Alma", "Odo", "Mira", "Tobin", "Elsa", "Garrick", "Lysa");
-
 	public CrownItem(Properties properties) {
 		super(properties);
 	}
@@ -61,10 +59,7 @@ public class CrownItem extends Item {
 			sp.sendSystemMessage(Component.literal(brain.name() + " already serves you."));
 			return InteractionResult.SUCCESS_SERVER;
 		}
-		String name = NAMES.get(villager.getRandom().nextInt(NAMES.size()));
-		VillagerBrains.set(villager, brain.makeSmart(name));
-		villager.setCustomName(Component.literal(name));
-		villager.setCustomNameVisible(true);
+		String name = Smartify.makeSmart(villager, Smartify.nearbyNames(villager));
 		sp.sendSystemMessage(Component.literal(name + " is now your smart villager. Sneak and right-click to talk."));
 		return InteractionResult.SUCCESS_SERVER;
 	}

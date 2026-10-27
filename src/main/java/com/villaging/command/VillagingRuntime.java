@@ -13,6 +13,7 @@ import com.villaging.config.VillagingConfig;
 import com.villaging.king.KingContextReader;
 import com.villaging.king.Kings;
 import com.villaging.villager.Conversation;
+import com.villaging.villager.Smartify;
 import com.villaging.villager.MinecraftActionExecutor;
 import com.villaging.villager.VillagerBrain;
 import com.villaging.villager.VillagerBrains;
@@ -27,6 +28,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.npc.villager.Villager;
@@ -69,7 +71,36 @@ public final class VillagingRuntime implements CommandService.Backend {
 	}
 
 	public CommandResult handle(ServerPlayer player, int villagerId, String message) {
+		makeSmartIfOrdinary(player, villagerId, message);
 		return service.handle(player.getUUID(), villagerId, message);
+	}
+
+	public VillagingConfig config() {
+		return config;
+	}
+
+	/**
+	 * Speaking to an ordinary villager makes it smart. The first speaker in a world with no king becomes king; anyone
+	 * else is turned away by the service as usual. Nothing happens while the AI is not set up.
+	 */
+	private void makeSmartIfOrdinary(ServerPlayer player, int villagerId, String message) {
+		if (!configProblem.isEmpty() || message == null || message.isBlank()
+				|| message.length() > CommandService.MAX_MESSAGE_LENGTH) {
+			return;
+		}
+		if (!(player.level().getEntity(villagerId) instanceof Villager villager) || villager.isRemoved()
+				|| VillagerBrains.get(villager).smart() || villager.distanceTo(player) > CommandService.MAX_DISTANCE) {
+			return;
+		}
+		boolean wasKing = Kings.isKing(server, player.getUUID());
+		if (!Kings.claim(server, player.getUUID())) {
+			return;
+		}
+		if (!wasKing) {
+			player.sendSystemMessage(Component.literal("You are the king. Villagers will serve you."));
+		}
+		String name = Smartify.makeSmart(villager, Smartify.nearbyNames(villager));
+		player.sendSystemMessage(Component.literal(name + " is now your smart villager."));
 	}
 
 	public void shutdown() {
@@ -124,7 +155,8 @@ public final class VillagingRuntime implements CommandService.Backend {
 		Villager villager = (Villager) king.level().getEntity(villagerId);
 		VillagerBrain brain = VillagerBrains.get(villager);
 
-		String system = SystemPrompt.build(brain, VillagerState.describe(villager), KingContextReader.read(king));
+		String system = SystemPrompt.build(brain, VillagerState.describe(villager), KingContextReader.read(king),
+				Kings.title(server));
 		// History excludes the new message (it is passed separately); the message is stored right away
 		// so a quick follow-up command always sees the earlier ones in the order they were given.
 		List<ChatMessage> history = Conversation.historyFrom(brain);

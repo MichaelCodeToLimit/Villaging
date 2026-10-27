@@ -13,8 +13,10 @@ Building from blueprints, ranks and chains of command beyond relaying orders are
 ## Setup
 
 1. Put the built jar (`build/libs/villaging-1.0.0.jar`) and Fabric API in your `mods` folder (Fabric Loader 0.20.1+).
-2. Start the game once. It creates `config/villaging.json`.
-3. Choose the AI in that file:
+2. Start the game and open a world. A box asks for your AI key (it shows dots, not the key). Pick Claude, Gemini or
+   Ollama, paste the key, press Enter. Reopen it any time with `/villaging key`. On a multiplayer server only the
+   owner or an admin can use it, and the key is stored on that server.
+3. Or set the AI by hand in `config/villaging.json` (the box writes the same file):
 
    **Cloud (Claude).** Set `"provider": "cloud"` and put your key in `"apiKey"`. Never share this file.
 
@@ -46,10 +48,13 @@ If the config is missing a key, the mod still loads and tells you what to fix wh
 
 ## Playing
 
-1. Craft the **Crown of the King**: `GGG / GDG` (G = gold ingot, D = diamond).
-2. Use the crown in the air to claim the throne (one king per world).
-3. Use the crown on a villager to make it smart; it gets a name.
-4. **Sneak + right-click** the villager and type. Press Enter to send, Escape to cancel.
+1. **Sneak + right-click any villager** and type. Press Enter to send, Escape to cancel. The first thing you say to
+   an ordinary villager makes it smart (it gets a name), and if the world has no king yet you become king.
+2. Or craft the **Crown of the King** (`GGG / GDG`, G = gold ingot, D = diamond): use it in the air to claim the
+   throne (one king per world), and on a villager to make it smart.
+3. **Rename:** "your name is Garrick", or "rename Bob to Odo". **Recruit:** "recruit two more villagers"; you are
+   asked to approve, and up to 5 ordinary villagers within 32 blocks become smart (they are chosen instantly, not
+   walked to). **Your title:** "call me Boss" (everyone) or "you call me Sire" (only that villager). Default: King.
 
 Talk normally: slang, typos, other languages, "mine that block" (the block you are looking at), questions.
 If it cannot do something yet it says so and offers the closest thing.

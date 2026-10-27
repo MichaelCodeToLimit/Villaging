@@ -63,6 +63,23 @@ class SystemPromptTest {
 	}
 
 	@Test
+	void callsTheKingByTheWorldTitleUnlessTheVillagerHasItsOwn() {
+		assertTrue(SystemPrompt.build(BRAIN, "state", KING, "Boss").contains("call the king \"Boss\""));
+		assertTrue(prompt().contains("call the king \"King\""));
+		VillagerBrain own = BRAIN.withKingTitle("Sire");
+		assertTrue(SystemPrompt.build(own, "state", KING, "Boss").contains("call the king \"Sire\""));
+	}
+
+	@Test
+	void teachesRenamingRecruitingAndTitles() {
+		com.villaging.ai.tools.AbilityTools.registerAll();
+		String p = prompt();
+		assertTrue(p.contains("rename"));
+		assertTrue(p.contains("recruit"));
+		assertTrue(p.contains("set_king_title"));
+	}
+
+	@Test
 	void kingContextSaysNothingLookedAtWhenNoBlock() {
 		String text = KingContext.describe("Steve", 0, 64, 0, "south", "nothing", null);
 		assertTrue(text.contains("not looking at any block"));
