@@ -11,7 +11,8 @@ class ProviderFactoryTest {
 	private static VillagingConfig with(String provider, String apiKey) {
 		VillagingConfig d = VillagingConfig.defaults();
 		return new VillagingConfig(provider, apiKey, d.model(), d.cloudUrl(), d.ollamaUrl(), d.ollamaModel(),
-				d.geminiModel(), d.geminiUrl(), d.maxSteps(), d.callsPerMinute(), d.actionRange());
+				d.geminiModel(), d.geminiUrl(), d.maxSteps(), d.callsPerMinute(), d.actionRange(), d.respectProtection(), d.allowBreakBedrock(),
+				d.maxScriptSteps(), d.maxScriptSeconds(), d.maxScriptDepth());
 	}
 
 	@Test

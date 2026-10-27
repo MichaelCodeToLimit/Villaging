@@ -49,4 +49,29 @@ class VillagerBrainTest {
 		JsonElement json = com.google.gson.JsonParser.parseString("{}");
 		assertEquals(VillagerBrain.DEFAULT, VillagerBrain.CODEC.parse(JsonOps.INSTANCE, json).getOrThrow());
 	}
+
+	@Test
+	void askOffCanBeSwitchedPerCategory() {
+		VillagerBrain brain = VillagerBrain.DEFAULT.makeSmart("Alma").withAskOff("fire", true);
+		assertTrue(brain.askOff().contains("fire"));
+		assertFalse(brain.withAskOff("fire", false).askOff().contains("fire"));
+	}
+
+	@Test
+	void askOffAndCommanderSurviveTheCodec() {
+		VillagerBrain original = VillagerBrain.DEFAULT.makeSmart("Alma").withAskOff("lava", true).withCommander(true);
+		JsonElement json = VillagerBrain.CODEC.encodeStart(JsonOps.INSTANCE, original).getOrThrow();
+		VillagerBrain decoded = VillagerBrain.CODEC.parse(JsonOps.INSTANCE, json).getOrThrow();
+		assertEquals(original, decoded);
+		assertTrue(decoded.commander());
+		assertTrue(decoded.askOff().contains("lava"));
+	}
+
+	@Test
+	void oldDataWithoutNewFieldsDecodesToDefaults() {
+		JsonElement json = com.google.gson.JsonParser.parseString("{\"smart\":true,\"name\":\"Bob\"}");
+		VillagerBrain decoded = VillagerBrain.CODEC.parse(JsonOps.INSTANCE, json).getOrThrow();
+		assertTrue(decoded.askOff().isEmpty());
+		assertFalse(decoded.commander());
+	}
 }

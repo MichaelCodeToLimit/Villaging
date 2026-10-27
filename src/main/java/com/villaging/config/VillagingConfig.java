@@ -18,14 +18,19 @@ public record VillagingConfig(
 		String geminiUrl,
 		int maxSteps,
 		int callsPerMinute,
-		int actionRange) {
+		int actionRange,
+		boolean respectProtection,
+		boolean allowBreakBedrock,
+		int maxScriptSteps,
+		int maxScriptSeconds,
+		int maxScriptDepth) {
 
 	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
 	public static VillagingConfig defaults() {
 		return new VillagingConfig("cloud", "", "claude-sonnet-5-5", "https://api.anthropic.com",
 				"http://localhost:11434", "llama3.1:8b", "gemini-3.5-flash", "https://generativelanguage.googleapis.com",
-				20, 10, 64);
+				20, 10, 64, true, false, 500, 300, 3);
 	}
 
 	public static VillagingConfig load(Path file) {
@@ -51,7 +56,12 @@ public record VillagingConfig(
 					orDefault(raw.geminiUrl, defaults.geminiUrl),
 					raw.maxSteps != null && raw.maxSteps > 0 ? raw.maxSteps : defaults.maxSteps,
 					raw.callsPerMinute != null && raw.callsPerMinute > 0 ? raw.callsPerMinute : defaults.callsPerMinute,
-					raw.actionRange != null && raw.actionRange > 0 ? raw.actionRange : defaults.actionRange);
+					raw.actionRange != null && raw.actionRange > 0 ? raw.actionRange : defaults.actionRange,
+					raw.respectProtection != null ? raw.respectProtection : defaults.respectProtection,
+					raw.allowBreakBedrock != null ? raw.allowBreakBedrock : defaults.allowBreakBedrock,
+					raw.maxScriptSteps != null && raw.maxScriptSteps > 0 ? raw.maxScriptSteps : defaults.maxScriptSteps,
+					raw.maxScriptSeconds != null && raw.maxScriptSeconds > 0 ? raw.maxScriptSeconds : defaults.maxScriptSeconds,
+					raw.maxScriptDepth != null && raw.maxScriptDepth > 0 ? raw.maxScriptDepth : defaults.maxScriptDepth);
 		} catch (IOException | RuntimeException e) {
 			Villaging.LOGGER.error("Could not read {}; using defaults", file, e);
 			return defaults;
@@ -88,5 +98,10 @@ public record VillagingConfig(
 		Integer maxSteps;
 		Integer callsPerMinute;
 		Integer actionRange;
+		Boolean respectProtection;
+		Boolean allowBreakBedrock;
+		Integer maxScriptSteps;
+		Integer maxScriptSeconds;
+		Integer maxScriptDepth;
 	}
 }

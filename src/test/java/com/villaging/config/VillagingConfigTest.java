@@ -77,4 +77,35 @@ class VillagingConfigTest {
 		assertFalse(config.isUsable());
 		assertTrue(config.problem().contains("provider"));
 	}
+
+	@Test
+	void abilitySettingsHaveSafeDefaults() {
+		VillagingConfig d = VillagingConfig.defaults();
+		assertTrue(d.respectProtection());
+		assertFalse(d.allowBreakBedrock());
+		assertEquals(500, d.maxScriptSteps());
+		assertEquals(300, d.maxScriptSeconds());
+		assertEquals(3, d.maxScriptDepth());
+	}
+
+	@Test
+	void abilitySettingsAreReadFromFile() throws Exception {
+		Path file = dir.resolve("villaging.json");
+		Files.writeString(file, "{\"respectProtection\":false,\"allowBreakBedrock\":true,\"maxScriptSteps\":40}");
+		VillagingConfig config = VillagingConfig.load(file);
+		assertFalse(config.respectProtection());
+		assertTrue(config.allowBreakBedrock());
+		assertEquals(40, config.maxScriptSteps());
+		assertEquals(300, config.maxScriptSeconds());
+	}
+
+	@Test
+	void nonPositiveScriptLimitsFallBackToDefaults() throws Exception {
+		Path file = dir.resolve("villaging.json");
+		Files.writeString(file, "{\"maxScriptSteps\":0,\"maxScriptSeconds\":-5,\"maxScriptDepth\":0}");
+		VillagingConfig config = VillagingConfig.load(file);
+		assertEquals(500, config.maxScriptSteps());
+		assertEquals(300, config.maxScriptSeconds());
+		assertEquals(3, config.maxScriptDepth());
+	}
 }
