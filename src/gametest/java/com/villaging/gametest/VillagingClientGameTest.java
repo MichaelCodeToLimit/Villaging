@@ -128,6 +128,9 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 			attempt("break_area clears a box", () -> breakArea(server));
 			attempt("risky acts ask the king first and asking can be switched off", () -> riskGate(context, server));
 			attempt("item tools pick up, drop, hand over, take (with consent), equip and eat", () -> itemTools(context, server));
+			attempt("craft makes small recipes anywhere and big ones at a table", () -> craftTools(server));
+			attempt("smelt cooks raw iron in a furnace", () -> smeltTool(server));
+			attempt("brew makes potions in a brewing stand", () -> brewTool(server));
 			attempt("container tools look in, fill and empty a chest", () -> containerTools(server));
 			attempt("a command from a non-king is ignored", () -> forgedPacket(context, server));
 		} finally {
@@ -658,6 +661,64 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 		String blocked = tool(server, v, "take_out", "{\"x\":3,\"y\":100,\"z\":0,\"item\":\"minecraft:diamond\",\"count\":1}", 200);
 		server.runCommand("gamemode creative @p");
 		require(blocked.startsWith("failed") && blocked.contains("protected"), "protection did not apply to containers: " + blocked);
+	}
+
+	private void craftTools(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager v = spawnVillager(server, 0, 100, 0);
+		// A 2x2 recipe needs no table.
+		server.runOnServer(srv -> VillagerInventories.get(v).addItem(new ItemStack(Items.OAK_PLANKS, 2)));
+		String sticks = tool(server, v, "craft", "{\"item\":\"minecraft:stick\",\"count\":4}", 100);
+		require(sticks.startsWith("ok: crafted 4"), "craft sticks said " + sticks);
+		require(villagerCount(server, v, Items.STICK) == 4 && villagerCount(server, v, Items.OAK_PLANKS) == 0, "sticks were not made from the planks");
+		require(tool(server, v, "craft", "{\"item\":\"minecraft:diamond_sword\",\"count\":1}", 100).startsWith("failed"), "crafted without materials");
+		// A 3x3 recipe needs a crafting table.
+		server.runOnServer(srv -> VillagerInventories.get(v).addItem(new ItemStack(Items.IRON_INGOT, 3)));
+		String noTable = tool(server, v, "craft", "{\"item\":\"minecraft:iron_pickaxe\",\"count\":1}", 100);
+		require(noTable.startsWith("failed") && noTable.contains("crafting table"), "expected a crafting-table failure, got " + noTable);
+		server.runCommand("setblock 3 100 0 minecraft:crafting_table");
+		String pick = tool(server, v, "craft", "{\"item\":\"minecraft:iron_pickaxe\",\"count\":1}", 600);
+		require(pick.startsWith("ok: crafted 1"), "craft pickaxe said " + pick);
+		require(villagerCount(server, v, Items.IRON_PICKAXE) == 1, "no pickaxe in the inventory");
+		require(villagerCount(server, v, Items.IRON_INGOT) == 0 && villagerCount(server, v, Items.STICK) == 2, "ingredients were not used correctly");
+	}
+
+	private void smeltTool(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager v = spawnVillager(server, 0, 100, 0);
+		server.runOnServer(srv -> {
+			VillagerInventories.get(v).addItem(new ItemStack(Items.RAW_IRON, 2));
+			VillagerInventories.get(v).addItem(new ItemStack(Items.COAL, 4));
+		});
+		String none = tool(server, v, "smelt", "{\"item\":\"minecraft:raw_iron\",\"count\":2}", 100);
+		require(none.startsWith("failed") && none.contains("furnace"), "expected a no-furnace failure, got " + none);
+		server.runCommand("setblock -3 100 0 minecraft:furnace");
+		String result = tool(server, v, "smelt", "{\"item\":\"minecraft:raw_iron\",\"count\":2}", 2400);
+		require(result.startsWith("ok: smelted"), "smelt said " + result);
+		require(villagerCount(server, v, Items.IRON_INGOT) == 2 && villagerCount(server, v, Items.RAW_IRON) == 0, "iron was not smelted into ingots");
+		require(villagerCount(server, v, Items.COAL) >= 3, "too much coal was used for 2 items");
+		require(tool(server, v, "smelt", "{\"item\":\"minecraft:diamond\",\"count\":1}", 100).startsWith("failed"), "smelting a diamond should fail");
+	}
+
+	private void brewTool(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager v = spawnVillager(server, 0, 100, 0);
+		server.runCommand("setblock 0 100 -3 minecraft:brewing_stand");
+		server.runOnServer(srv -> {
+			VillagerInventories.get(v).addItem(net.minecraft.world.item.alchemy.PotionContents.createItemStack(Items.POTION,
+					net.minecraft.world.item.alchemy.Potions.WATER));
+			VillagerInventories.get(v).addItem(net.minecraft.world.item.alchemy.PotionContents.createItemStack(Items.POTION,
+					net.minecraft.world.item.alchemy.Potions.WATER));
+			VillagerInventories.get(v).addItem(new ItemStack(Items.NETHER_WART, 1));
+			VillagerInventories.get(v).addItem(new ItemStack(Items.BLAZE_POWDER, 1));
+		});
+		String result = tool(server, v, "brew", "{\"item\":\"minecraft:nether_wart\"}", 1800);
+		require(result.startsWith("ok: brewed 2") && result.toLowerCase().contains("awkward"), "brew said " + result);
+		require(villagerCount(server, v, Items.NETHER_WART) == 0 && villagerCount(server, v, Items.BLAZE_POWDER) == 0, "ingredient or fuel not used");
+		require(tool(server, v, "brew", "{\"item\":\"minecraft:nether_wart\"}", 100).startsWith("failed"), "brewing with nothing should fail");
 	}
 
 	private static String toolCall(String name, String argsJson) {
