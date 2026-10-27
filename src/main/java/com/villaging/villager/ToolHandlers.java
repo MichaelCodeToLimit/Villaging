@@ -36,6 +36,6 @@ public final class ToolHandlers {
 				new GoToAction(args.get("x").getAsDouble(), args.get("y").getAsDouble(), args.get("z").getAsDouble())));
 		register("mine_block", (ctx, args) -> ActionManager.INSTANCE.run(ctx.villager(),
 				new MineAction(new BlockPos(args.get("x").getAsInt(), args.get("y").getAsInt(), args.get("z").getAsInt()),
-						ctx.kingId())));
+						ctx.kingId(), ctx.config())));
 	}
 }

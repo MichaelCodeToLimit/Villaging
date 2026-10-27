@@ -1,9 +1,8 @@
 package com.villaging.villager;
 
+import com.villaging.config.VillagingConfig;
 import java.util.UUID;
-import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
 import net.minecraft.core.BlockPos;
-import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.Container;
 import net.minecraft.world.InteractionHand;
@@ -28,10 +27,16 @@ public final class MineAction implements VillagerAction {
 	private int ticks;
 	private int mined;
 	private int needed = -1;
+	private final VillagingConfig config;
 	private boolean protectionChecked;
 
 	/** @param kingId the king the villager works for; protection is checked as if the king broke the block */
 	public MineAction(BlockPos pos, UUID kingId) {
+		this(pos, kingId, VillagingConfig.defaults());
+	}
+
+	public MineAction(BlockPos pos, UUID kingId, VillagingConfig config) {
+		this.config = config;
 		this.pos = pos;
 		this.kingId = kingId;
 	}
@@ -52,7 +57,7 @@ public final class MineAction implements VillagerAction {
 			return Status.failed("there is no block at " + pos.toShortString());
 		}
 		float hardness = state.getDestroySpeed(level, pos);
-		if (hardness < 0) {
+		if (hardness < 0 && !ProtectionRules.canBreakUnbreakable(config.allowBreakBedrock())) {
 			return Status.failed("that block cannot be broken");
 		}
 		if (hardness > MAX_HARDNESS) {
@@ -86,7 +91,7 @@ public final class MineAction implements VillagerAction {
 		villager.getNavigation().stop();
 		villager.getLookControl().setLookAt(center.x, center.y, center.z);
 		if (needed < 0) {
-			needed = Math.max(10, (int) (hardness * 30));
+			needed = hardness < 0 ? 20 : Math.max(10, (int) (hardness * 30));
 		}
 		mined++;
 		if (mined % 5 == 0) {
@@ -116,16 +121,6 @@ public final class MineAction implements VillagerAction {
 
 	/** Null when the block may be broken; otherwise why not. Applies the same rules as if the king broke it. */
 	private String protectionProblem(ServerLevel level, BlockState state, BlockEntity entity) {
-		ServerPlayer king = level.getServer().getPlayerList().getPlayer(kingId);
-		if (king == null) {
-			return "the king is not here to authorise that";
-		}
-		if (!king.getAbilities().mayBuild || !level.mayInteract(king, pos) || !level.getWorldBorder().isWithinBounds(pos)) {
-			return "that area is protected";
-		}
-		if (!PlayerBlockBreakEvents.BEFORE.invoker().beforeBlockBreak(level, king, pos, state, entity)) {
-			return "something is protecting that block";
-		}
-		return null;
+		return Protection.blockProblem(level, kingId, pos, state, entity, config.respectProtection());
 	}
 }

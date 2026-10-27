@@ -2,6 +2,7 @@ package com.villaging.gametest;
 
 import com.villaging.ModItems;
 import com.villaging.client.VillagerChatScreen;
+import com.villaging.config.VillagingConfig;
 import com.villaging.king.KingData;
 import com.villaging.king.Kings;
 import com.villaging.net.CommandPayload;
@@ -99,6 +100,8 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 			attempt("the crown works through the real click hook (vanilla trading would eat it otherwise)", () -> crownViaClickHook(server));
 			attempt("mine_block refuses in adventure mode", () -> mineProtectedAdventure(server));
 			attempt("mine_block honours another mod vetoing the break", () -> mineVetoed(server));
+			attempt("allowBreakBedrock lets a villager break bedrock like a creative player", () -> mineBedrockAllowed(server));
+			attempt("respectProtection=false skips protection checks", () -> mineVetoIgnored(server));
 			attempt("speech bubble text never stays as the villager name", () -> bubbleRestored(server));
 			attempt("sneak-click on a smart villager opens the chat screen", () -> sneakClick(context, server));
 			attempt("typing in the chat screen drives the villager end to end", () -> endToEnd(context, server));
@@ -328,6 +331,32 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 		String result = awaitResult(server, startAction(server, v, new MineAction(target, playerId(server))), 400);
 		require(result.startsWith("failed") && result.contains("protect"), "expected a veto refusal, got " + result);
 		require(server.computeOnServer(srv -> srv.overworld().getBlockState(target).is(Blocks.STONE)), "vetoed block was mined");
+	}
+
+	private static VillagingConfig configWith(boolean respectProtection, boolean allowBreakBedrock) {
+		VillagingConfig d = VillagingConfig.defaults();
+		return new VillagingConfig(d.provider(), d.apiKey(), d.model(), d.cloudUrl(), d.ollamaUrl(), d.ollamaModel(),
+				d.geminiModel(), d.geminiUrl(), d.maxSteps(), d.callsPerMinute(), d.actionRange(), respectProtection,
+				allowBreakBedrock, d.maxScriptSteps(), d.maxScriptSeconds(), d.maxScriptDepth());
+	}
+
+	private void mineBedrockAllowed(TestServerContext server) throws Exception {
+		resetArena(server);
+		BlockPos target = new BlockPos(4, 100, 0);
+		server.runOnServer(srv -> srv.overworld().setBlockAndUpdate(target, Blocks.BEDROCK.defaultBlockState()));
+		Villager v = spawnVillager(server, 0, 100, 0);
+		String result = awaitResult(server, startAction(server, v, new MineAction(target, playerId(server), configWith(true, true))), 1200);
+		require(result.startsWith("ok: mined"), "expected bedrock to be mined, got " + result);
+		require(server.computeOnServer(srv -> srv.overworld().getBlockState(target).isAir()), "bedrock is still there");
+	}
+
+	private void mineVetoIgnored(TestServerContext server) throws Exception {
+		resetArena(server);
+		BlockPos target = new BlockPos(9, 100, 9);
+		server.runOnServer(srv -> srv.overworld().setBlockAndUpdate(target, Blocks.STONE.defaultBlockState()));
+		Villager v = spawnVillager(server, 8, 100, 8);
+		String result = awaitResult(server, startAction(server, v, new MineAction(target, playerId(server), configWith(false, false))), 1200);
+		require(result.startsWith("ok: mined"), "expected the veto to be ignored, got " + result);
 	}
 
 	private void villagerInventory(TestServerContext server) {
