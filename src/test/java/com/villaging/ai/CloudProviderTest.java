@@ -30,7 +30,7 @@ class CloudProviderTest {
 			assertEquals("test-model", body.get("model").getAsString());
 			assertEquals("be a villager", body.get("system").getAsString());
 			assertEquals(1024, body.get("max_tokens").getAsInt());
-			assertEquals(5, body.getAsJsonArray("tools").size());
+			assertEquals(Tools.all().size(), body.getAsJsonArray("tools").size());
 			JsonObject firstTool = body.getAsJsonArray("tools").get(0).getAsJsonObject();
 			assertTrue(firstTool.has("input_schema"));
 			JsonObject msg = body.getAsJsonArray("messages").get(0).getAsJsonObject();

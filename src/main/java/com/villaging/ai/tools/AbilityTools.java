@@ -8,5 +8,6 @@ public final class AbilityTools {
 	public static void registerAll() {
 		AskTools.register();
 		LookTools.register();
+		WorldTools.register();
 	}
 }

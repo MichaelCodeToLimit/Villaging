@@ -123,6 +123,9 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 			attempt("ask accepts the king's own typed answer", () -> askRound(context, server, "Burn it all", c -> { c.getInput().typeChars("Burn it all"); c.getInput().pressKey(GLFW.GLFW_KEY_ENTER); }, "ok: the king answered \"Burn it all\""));
 			attempt("closing the ask dialog reads as no answer", () -> askRound(context, server, null, c -> c.runOnClient(mc -> mc.gui.screen().onClose()), "failed: the king did not answer"));
 			attempt("look_around, look_at and check_inventory report the surroundings", () -> lookTools(server));
+			attempt("place_block places from the inventory and respects protection", () -> placeBlock(server));
+			attempt("use_block flips a lever", () -> useBlock(server));
+			attempt("break_area clears a box", () -> breakArea(server));
 			attempt("risky acts ask the king first and asking can be switched off", () -> riskGate(context, server));
 			attempt("a command from a non-king is ignored", () -> forgedPacket(context, server));
 		} finally {
@@ -162,6 +165,8 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 
 	private static void resetArena(TestServerContext server) {
 		server.runCommand("kill @e[type=minecraft:villager]");
+		// A killed villager lingers for a second while it dies and would still block placing blocks.
+		server.waitFor(srv -> srv.overworld().getEntitiesOfClass(Villager.class, new AABB(-16, 90, -16, 16, 116, 16)).isEmpty(), 100);
 		server.runCommand("kill @e[type=minecraft:item]");
 		server.runCommand("fill -16 100 -16 16 115 16 air");
 		server.runCommand("tp @p 0 100 2");
@@ -490,6 +495,58 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 		require(tool(server, v, "look_around", "{\"radius\":99}", 20).startsWith("invalid:"), "radius 99 was accepted");
 	}
 
+	private void placeBlock(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager v = spawnVillager(server, 0, 100, 0);
+		server.runOnServer(srv -> VillagerInventories.get(v).addItem(new ItemStack(Items.OAK_PLANKS, 5)));
+		BlockPos target = new BlockPos(3, 100, 0);
+		String result = tool(server, v, "place_block", "{\"item\":\"minecraft:oak_planks\",\"x\":3,\"y\":100,\"z\":0}", 600);
+		require(result.startsWith("ok: placed"), "expected placement, got " + result);
+		require(server.computeOnServer(srv -> srv.overworld().getBlockState(target).is(Blocks.OAK_PLANKS)), "no planks at the target");
+		require(4 == server.computeOnServer(srv -> VillagerInventories.get(v).count(Items.OAK_PLANKS)), "planks were not used up");
+		String taken = tool(server, v, "place_block", "{\"item\":\"minecraft:oak_planks\",\"x\":3,\"y\":100,\"z\":0}", 200);
+		require(taken.startsWith("failed") && taken.contains("taken"), "expected an occupied-spot failure, got " + taken);
+		String none = tool(server, v, "place_block", "{\"item\":\"minecraft:diamond_block\",\"x\":4,\"y\":100,\"z\":0}", 200);
+		require(none.startsWith("failed") && none.contains("don't have"), "expected a missing-item failure, got " + none);
+		String floating = tool(server, v, "place_block", "{\"item\":\"minecraft:oak_planks\",\"x\":8,\"y\":105,\"z\":8}", 200);
+		require(floating.startsWith("failed") && floating.contains("build against"), "expected no-support failure, got " + floating);
+		// Protection: an adventure-mode king may not build, unless protection is switched off.
+		server.runCommand("gamemode adventure @p");
+		String blocked = tool(server, v, "place_block", "{\"item\":\"minecraft:oak_planks\",\"x\":4,\"y\":100,\"z\":0}", 200);
+		require(blocked.startsWith("failed") && blocked.contains("protected"), "expected a protection failure, got " + blocked);
+		String allowed = tool(server, v, configWith(false, false), "place_block",
+				"{\"item\":\"minecraft:oak_planks\",\"x\":4,\"y\":100,\"z\":0}", 600);
+		require(allowed.startsWith("ok: placed"), "respectProtection=false should allow it, got " + allowed);
+		server.runCommand("gamemode creative @p");
+	}
+
+	private void useBlock(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		server.runCommand("setblock 3 100 0 minecraft:lever[face=floor]");
+		Villager v = spawnVillager(server, 0, 100, 0);
+		BlockPos lever = new BlockPos(3, 100, 0);
+		require(!server.computeOnServer(srv -> srv.overworld().getBlockState(lever).getValue(
+				net.minecraft.world.level.block.LeverBlock.POWERED)), "lever started on");
+		String result = tool(server, v, "use_block", "{\"x\":3,\"y\":100,\"z\":0}", 400);
+		require(result.startsWith("ok: used"), "expected the lever to be used, got " + result);
+		require(server.computeOnServer(srv -> srv.overworld().getBlockState(lever).getValue(
+				net.minecraft.world.level.block.LeverBlock.POWERED)), "lever did not flip");
+	}
+
+	private void breakArea(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		server.runCommand("fill 4 100 0 6 102 2 minecraft:dirt");
+		Villager v = spawnVillager(server, 0, 100, 0);
+		String result = tool(server, v, "break_area", "{\"x1\":4,\"y1\":100,\"z1\":0,\"x2\":6,\"y2\":102,\"z2\":2}", 6000);
+		require(result.equals("ok: broke 27 blocks"), "expected 27 blocks, got " + result);
+		require(server.computeOnServer(srv -> srv.overworld().getBlockState(new BlockPos(5, 101, 1)).isAir()), "dirt is still there");
+		require(tool(server, v, "break_area", "{\"x1\":0,\"y1\":100,\"z1\":0,\"x2\":16,\"y2\":100,\"z2\":0}", 20).startsWith("invalid:"),
+				"a 17-wide box was accepted");
+	}
+
 	private static String toolCall(String name, String argsJson) {
 		return "{\"message\":{\"role\":\"assistant\",\"content\":\"\",\"tool_calls\":[{\"function\":{\"name\":\"" + name
 				+ "\",\"arguments\":" + argsJson + "}}]}}";
@@ -512,21 +569,15 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 	}
 
 	private void riskGate(ClientGameTestContext context, TestServerContext server) throws Exception {
-		// Stand-in for the real place_block (Task 10): puts TNT where the call says.
-		Tools.register(new ToolDef("place_block", "test stand-in", ToolSchema.object().build()),
-				(args, range, ox, oy, oz) -> Optional.empty());
-		ToolHandlers.register("place_block", (ctx, args) -> {
-			BlockPos p = new BlockPos(args.get("x").getAsInt(), args.get("y").getAsInt(), args.get("z").getAsInt());
-			ctx.villager().level().setBlockAndUpdate(p, Blocks.TNT.defaultBlockState());
-			return CompletableFuture.completedFuture("ok: placed");
-		});
 		try {
 			resetArena(server);
 			makeKing(server);
 			Villager v = spawnVillager(server, 0, 100, 0);
 			server.runOnServer(srv -> VillagerBrains.set(v, VillagerBrain.DEFAULT.makeSmart("Alma")));
+			server.runOnServer(srv -> VillagerInventories.get(v).addItem(new ItemStack(Items.TNT, 3)));
+			server.runOnServer(srv -> v.setNoAi(true)); // a wandering villager could step onto the target block
 			BlockPos first = new BlockPos(3, 100, 0);
-			BlockPos second = new BlockPos(5, 100, 0);
+			BlockPos second = new BlockPos(3, 100, 1);
 
 			// "No": nothing is placed and the model is told.
 			ollama.script(toolCall("place_block", "{\"item\":\"minecraft:tnt\",\"x\":3,\"y\":100,\"z\":0}"), reply("Understood."));
@@ -542,7 +593,7 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 			command(context, server, v, "put tnt there", 2);
 			answerDialog(context, "Yes");
 			server.waitFor(srv -> ollama.requests.size() >= 2, 600);
-			require(server.computeOnServer(srv -> srv.overworld().getBlockState(first).is(Blocks.TNT)), "TNT was not placed after a yes");
+			require(server.computeOnServer(srv -> srv.overworld().getBlockState(first).is(Blocks.TNT)), "TNT was not placed after a yes; villager at " + server.computeOnServer(srv -> v.position() + " noai=" + v.isNoAi() + " mainhand=" + v.getMainHandItem() + " inv=" + VillagerInventories.get(v).count(Items.TNT)));
 
 			// Switching asking off needs the king's yes, and is remembered.
 			ollama.script(toolCall("set_ask_preference", "{\"category\":\"explosive\",\"ask\":false}"), reply("Noted."));
@@ -553,7 +604,7 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 
 			// With asking off, no dialog appears.
 			server.waitFor(srv -> ollama.requests.size() >= 2, 600);
-			ollama.script(toolCall("place_block", "{\"item\":\"minecraft:tnt\",\"x\":5,\"y\":100,\"z\":0}"), reply("Done."));
+			ollama.script(toolCall("place_block", "{\"item\":\"minecraft:tnt\",\"x\":3,\"y\":100,\"z\":1}"), reply("Done."));
 			command(context, server, v, "again", 2);
 			server.waitFor(srv -> srv.overworld().getBlockState(second).is(Blocks.TNT), 600);
 			require(server.computeOnServer(srv -> srv.overworld().getBlockState(second).is(Blocks.TNT)), "TNT was not placed without asking");
@@ -565,8 +616,7 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 			server.waitFor(srv -> !VillagerBrains.get(v).askOff().contains("explosive"), 600);
 			require(server.computeOnServer(srv -> VillagerBrains.get(v).askOff().isEmpty()), "asking was not switched back on");
 		} finally {
-			Tools.unregister("place_block");
-			ToolHandlers.unregister("place_block");
+			// nothing to undo
 		}
 	}
 

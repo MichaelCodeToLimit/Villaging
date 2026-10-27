@@ -48,4 +48,22 @@ public final class Protection {
 		}
 		return null;
 	}
+
+	/**
+	 * Null when the king could place or use something at {@code pos}; otherwise why not. With {@code respectProtection}
+	 * off nothing is checked.
+	 */
+	public static String interactProblem(ServerLevel level, UUID kingId, BlockPos pos, boolean respectProtection) {
+		if (!respectProtection) {
+			return null;
+		}
+		ServerPlayer king = level.getServer().getPlayerList().getPlayer(kingId);
+		if (king == null) {
+			return "the king is not here to authorise that";
+		}
+		if (!king.getAbilities().mayBuild || !level.mayInteract(king, pos) || !level.getWorldBorder().isWithinBounds(pos)) {
+			return "that area is protected";
+		}
+		return null;
+	}
 }

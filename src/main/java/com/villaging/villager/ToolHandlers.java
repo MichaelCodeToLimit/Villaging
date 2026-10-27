@@ -29,6 +29,7 @@ public final class ToolHandlers {
 	public static void registerAbilities() {
 		AskHandlers.register();
 		LookHandlers.register();
+		WorldHandlers.register();
 	}
 
 	/** Registers the Foundation tools; safe to call more than once. */
