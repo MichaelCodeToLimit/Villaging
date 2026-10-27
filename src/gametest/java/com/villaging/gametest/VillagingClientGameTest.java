@@ -8,6 +8,8 @@ import com.villaging.net.CommandPayload;
 import com.villaging.villager.ActionManager;
 import com.villaging.villager.FollowAction;
 import com.villaging.villager.GoToAction;
+import com.villaging.villager.HandsManager;
+import com.villaging.villager.VillagerHands;
 import com.villaging.villager.MineAction;
 import com.villaging.villager.SpeechBubble;
 import com.villaging.villager.VillagerSpeech;
@@ -93,6 +95,7 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 			attempt("stop cancels the running action", () -> stop(server));
 			attempt("a villager removed mid-action fails cleanly", () -> removedMidAction(server));
 			attempt("a villager keeps its own saved 36-slot inventory", () -> villagerInventory(server));
+			attempt("the villager fake player is hidden, holds items and is released", () -> villagerHands(server));
 			attempt("the crown works through the real click hook (vanilla trading would eat it otherwise)", () -> crownViaClickHook(server));
 			attempt("mine_block refuses in adventure mode", () -> mineProtectedAdventure(server));
 			attempt("mine_block honours another mod vetoing the break", () -> mineVetoed(server));
@@ -349,6 +352,33 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 			return VillagerInventory.CODEC.parse(ops, tag).getOrThrow().count(Items.STICK);
 		});
 		require(after == 3, "inventory did not survive saving, sticks=" + after);
+	}
+
+	private void villagerHands(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager v = spawnVillager(server, 0, 100, 0);
+		server.runOnServer(srv -> VillagerInventories.get(v).addItem(new ItemStack(Items.STONE, 5)));
+		int players = server.computeOnServer(srv -> srv.getPlayerList().getPlayers().size());
+		int fakeId = server.computeOnServer(srv -> {
+			VillagerHands hands = HandsManager.get(v);
+			hands.syncFrom();
+			return hands.player().getId();
+		});
+		require(server.computeOnServer(srv -> srv.getPlayerList().getPlayers().size()) == players, "fake player joined the player list");
+		require(server.computeOnServer(srv -> srv.overworld().getEntity(fakeId)) == null, "fake player is in the world");
+		require(server.computeOnServer(srv -> HandsManager.get(v).player().position().distanceTo(v.position())) < 0.01, "hands are not at the villager");
+		require(server.computeOnServer(srv -> HandsManager.get(v).hold(Items.STONE)), "could not hold stone");
+		require(server.computeOnServer(srv -> HandsManager.get(v).player().getMainHandItem().is(Items.STONE)), "fake player is not holding stone");
+		require(server.computeOnServer(srv -> v.getMainHandItem().is(Items.STONE)), "villager does not show the held stone");
+		require(!server.computeOnServer(srv -> HandsManager.get(v).hold(Items.DIAMOND)), "held an item it does not have");
+		server.runOnServer(srv -> HandsManager.get(v).player().getInventory().getItem(0).shrink(0));
+		server.runOnServer(srv -> HandsManager.get(v).syncTo());
+		require(5 == server.computeOnServer(srv -> VillagerInventories.get(v).count(Items.STONE)), "syncTo changed the villager inventory");
+		require(HandsManager.size() == 1, "expected one hands object, got " + HandsManager.size());
+		server.runCommand("kill @e[type=minecraft:villager]");
+		server.waitFor(srv -> HandsManager.size() == 0, 200);
+		require(HandsManager.size() == 0, "hands were not released when the villager died");
 	}
 
 	private void bubbleRestored(TestServerContext server) {

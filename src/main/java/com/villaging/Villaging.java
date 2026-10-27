@@ -8,6 +8,7 @@ import com.villaging.king.Kings;
 import com.villaging.net.CommandPayload;
 import com.villaging.net.OpenChatPayload;
 import com.villaging.villager.ActionManager;
+import com.villaging.villager.HandsManager;
 import com.villaging.villager.VillagerBrain;
 import com.villaging.villager.VillagerBrains;
 import com.villaging.villager.VillagerInventories;
@@ -55,6 +56,7 @@ public class Villaging implements ModInitializer {
 				current.shutdown();
 			}
 			ActionManager.INSTANCE.clear();
+			HandsManager.clear();
 			VillagerSpeech.clear();
 		});
 		ServerTickEvents.END_LEVEL_TICK.register(ActionManager.INSTANCE::tick);
@@ -88,6 +90,13 @@ public class Villaging implements ModInitializer {
 				return CrownItem.applyToVillager(sp, villager);
 			}
 			return InteractionResult.PASS;
+		});
+
+		// The villager's hidden fake player goes with it.
+		ServerEntityEvents.ENTITY_UNLOAD.register((entity, level) -> {
+			if (entity instanceof Villager villager) {
+				HandsManager.release(villager);
+			}
 		});
 
 		// A smart villager that was showing a speech bubble when its chunk was saved gets its real name back.
