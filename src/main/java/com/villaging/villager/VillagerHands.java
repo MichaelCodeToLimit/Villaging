@@ -1,7 +1,6 @@
 package com.villaging.villager;
 
 import com.mojang.authlib.GameProfile;
-import net.fabricmc.fabric.api.entity.FakePlayer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.EquipmentSlot;
@@ -15,14 +14,14 @@ import net.minecraft.world.item.ItemStack;
  */
 public final class VillagerHands {
 	private final Villager villager;
-	private final FakePlayer player;
+	private final VillagerPlayer player;
 
 	VillagerHands(Villager villager) {
 		this.villager = villager;
-		this.player = FakePlayer.get((ServerLevel) villager.level(), new GameProfile(villager.getUUID(), "Villager"));
+		this.player = new VillagerPlayer((ServerLevel) villager.level(), new GameProfile(villager.getUUID(), "Villager"));
 	}
 
-	public FakePlayer player() {
+	public VillagerPlayer player() {
 		return player;
 	}
 

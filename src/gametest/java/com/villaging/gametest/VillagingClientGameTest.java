@@ -135,6 +135,10 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 			attempt("till, plant and harvest farm a crop", () -> farming(server));
 			attempt("shear, milk, breed and tame work on animals", () -> animals(server));
 			attempt("fish catches something near water", () -> fishing(server));
+			attempt("attack kills a hostile creature", () -> combatAttack(server));
+			attempt("players and pets are never attacked or shot", () -> combatNeverHurtsPlayersOrPets(server));
+			attempt("shoot hits a target with a bow", () -> combatShoot(server));
+			attempt("guard protects the king and spares pets, flee runs away", () -> combatGuardAndFlee(server));
 			attempt("container tools look in, fill and empty a chest", () -> containerTools(server));
 			attempt("a command from a non-king is ignored", () -> forgedPacket(context, server));
 		} finally {
@@ -173,6 +177,7 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 	}
 
 	private static void resetArena(TestServerContext server) {
+		server.runCommand("difficulty peaceful");
 		server.runCommand("kill @e[type=minecraft:villager]");
 		// A killed villager lingers for a second while it dies and would still block placing blocks.
 		server.waitFor(srv -> srv.overworld().getEntitiesOfClass(Villager.class, new AABB(-16, 90, -16, 16, 116, 16)).isEmpty(), 100);
@@ -807,6 +812,101 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 		String result = tool(server, v, "fish", "{\"seconds\":20}", 900);
 		require(result.startsWith("ok: caught 1"), "fish said " + result);
 		require(villagerCount(server, v, Items.FISHING_ROD) == 1, "the rod should survive one catch");
+	}
+
+	private static int mobId(TestServerContext server, String type, double x, double y, double z) {
+		server.runCommand("difficulty easy"); // hostile mobs vanish on peaceful
+		server.runCommand("summon " + type + " " + x + " " + y + " " + z + " {NoAI:1b,PersistenceRequired:1b}");
+		return server.computeOnServer(srv -> {
+			List<net.minecraft.world.entity.Mob> found = srv.overworld().getEntitiesOfClass(net.minecraft.world.entity.Mob.class,
+					new AABB(x - 1, y - 1, z - 1, x + 1, y + 2, z + 1), m -> !(m instanceof Villager));
+			require(!found.isEmpty(), type + " did not spawn");
+			return found.get(0).getId();
+		});
+	}
+
+	private static float healthOf(TestServerContext server, int id) {
+		return server.computeOnServer(srv -> srv.overworld().getEntity(id) instanceof net.minecraft.world.entity.LivingEntity l
+				? l.getHealth() : -1f);
+	}
+
+	private void combatAttack(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager v = spawnVillager(server, 0, 100, 0);
+		server.runOnServer(srv -> v.setItemSlot(net.minecraft.world.entity.EquipmentSlot.MAINHAND, new ItemStack(Items.IRON_SWORD)));
+		int husk = mobId(server, "minecraft:husk", 3, 100, 0);
+		String result = tool(server, v, "attack", "{\"entity_id\":" + husk + "}", 1500);
+		require(result.startsWith("ok: killed"), "attack said " + result);
+		require(healthOf(server, husk) <= 0f || server.computeOnServer(srv -> srv.overworld().getEntity(husk) == null
+				|| !srv.overworld().getEntity(husk).isAlive()), "the husk is still alive");
+		require(tool(server, v, "attack", "{\"entity_id\":99999}", 100).startsWith("failed"), "attacking a missing id should fail");
+	}
+
+	private void combatNeverHurtsPlayersOrPets(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager v = spawnVillager(server, 0, 100, 0);
+		server.runOnServer(srv -> v.setItemSlot(net.minecraft.world.entity.EquipmentSlot.MAINHAND, new ItemStack(Items.IRON_SWORD)));
+		int wolf = mobId(server, "minecraft:wolf", 2, 100, 0);
+		server.runOnServer(srv -> ((net.minecraft.world.entity.TamableAnimal) srv.overworld().getEntity(wolf))
+				.tame(srv.getPlayerList().getPlayers().get(0)));
+		int king = server.computeOnServer(srv -> srv.getPlayerList().getPlayers().get(0).getId());
+		float wolfHealth = healthOf(server, wolf);
+		String petResult = tool(server, v, "attack", "{\"entity_id\":" + wolf + "}", 200);
+		require(petResult.startsWith("failed") && petResult.contains("won't hurt"), "attacking a pet was not refused: " + petResult);
+		String playerResult = tool(server, v, "attack", "{\"entity_id\":" + king + "}", 200);
+		require(playerResult.startsWith("failed") && playerResult.contains("won't hurt"), "attacking the king was not refused: " + playerResult);
+		server.runOnServer(srv -> VillagerInventories.get(v).addItem(new ItemStack(Items.BOW)));
+		server.runOnServer(srv -> VillagerInventories.get(v).addItem(new ItemStack(Items.ARROW, 4)));
+		String shot = tool(server, v, "shoot", "{\"entity_id\":" + wolf + "}", 200);
+		require(shot.startsWith("failed") && shot.contains("won't hurt"), "shooting a pet was not refused: " + shot);
+		require(healthOf(server, wolf) == wolfHealth, "the pet was hurt");
+		require(villagerCount(server, v, Items.ARROW) == 4, "an arrow was spent on a refused shot");
+	}
+
+	private void combatShoot(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager v = spawnVillager(server, 0, 100, 0);
+		int husk = mobId(server, "minecraft:husk", 8, 100, 0);
+		require(tool(server, v, "shoot", "{\"entity_id\":" + husk + "}", 100).contains("bow"), "shooting without a bow should fail");
+		server.runOnServer(srv -> {
+			VillagerInventories.get(v).addItem(new ItemStack(Items.BOW));
+			VillagerInventories.get(v).addItem(new ItemStack(Items.ARROW, 4));
+		});
+		float before = healthOf(server, husk);
+		String shot = tool(server, v, "shoot", "{\"entity_id\":" + husk + "}", 200);
+		require(shot.startsWith("ok: shot"), "shoot said " + shot);
+		require(villagerCount(server, v, Items.ARROW) == 3, "the arrow was not used up");
+		server.waitFor(srv -> healthOf(server, husk) < before, 200);
+		require(healthOf(server, husk) < before, "the arrow never hit the husk");
+	}
+
+	private void combatGuardAndFlee(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager v = spawnVillager(server, 0, 100, 0);
+		server.runOnServer(srv -> v.setItemSlot(net.minecraft.world.entity.EquipmentSlot.MAINHAND, new ItemStack(Items.IRON_SWORD)));
+		int cat = mobId(server, "minecraft:cat", 4, 100, 2);
+		server.runOnServer(srv -> ((net.minecraft.world.entity.TamableAnimal) srv.overworld().getEntity(cat))
+				.tame(srv.getPlayerList().getPlayers().get(0)));
+		int husk = mobId(server, "minecraft:husk", 5, 100, 0);
+		String started = tool(server, v, "guard", "{}", 100);
+		require(started.startsWith("ok"), "guard said " + started);
+		server.waitFor(srv -> healthOf(server, husk) <= 0f, 1500);
+		require(healthOf(server, husk) <= 0f, "the guard did not kill the nearby husk");
+		require(server.computeOnServer(srv -> ((net.minecraft.world.entity.LivingEntity) srv.overworld().getEntity(cat)).getHealth()
+				== ((net.minecraft.world.entity.LivingEntity) srv.overworld().getEntity(cat)).getMaxHealth()), "the guard hurt a pet");
+		require(tool(server, v, "stop", "{}", 50).startsWith("ok"), "stop failed");
+		// flee: runs away from a hostile creature.
+		server.runCommand("kill @e[type=minecraft:cat]");
+		int threat = mobId(server, "minecraft:husk", 2, 100, 0);
+		double before = server.computeOnServer(srv -> v.distanceTo(srv.overworld().getEntity(threat)));
+		String fled = tool(server, v, "flee", "{\"seconds\":4}", 400);
+		require(fled.startsWith("ok: ran away"), "flee said " + fled);
+		double after = server.computeOnServer(srv -> v.distanceTo(srv.overworld().getEntity(threat)));
+		require(after > before + 5, "the villager did not get away: " + before + " -> " + after);
 	}
 
 	private static String toolCall(String name, String argsJson) {
