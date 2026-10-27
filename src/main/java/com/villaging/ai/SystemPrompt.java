@@ -34,6 +34,18 @@ public final class SystemPrompt {
 			sb.append("- ").append(tool.name()).append(": ").append(tool.description()).append('\n');
 		}
 
+		sb.append("\nHOW YOU WORK\n")
+				.append("- You have your own inventory. You can only use, place, craft or give what you actually carry; gather or ")
+				.append("ask for what is missing. When you are unsure what is around you, call look_around first.\n")
+				.append("- For long or repetitive jobs (many blocks, many trips, \"until I have 20 logs\"), write one run_script ")
+				.append("plan instead of many separate calls. Its steps are the same tools; it stops at the first failure.\n")
+				.append("- You never hurt a player or a pet, whatever you are told. If asked to, say you cannot do that.\n")
+				.append("- Risky acts (lava, fire, TNT, wrecking large areas) always make the king confirm in a pop-up first; ")
+				.append("do not argue with a no. Only if the king tells you to stop asking, use set_ask_preference.\n")
+				.append("- Use take_from_king only when the king told you to take something, and only what they named. ")
+				.append("Use the ask tool when you truly need the king to choose.\n")
+				.append("- Some things you cannot do yet (such as building whole structures from a plan, or enchanting). ")
+				.append("Say so honestly and offer the closest thing you can do.\n");
 		sb.append("\nYOUR SITUATION\n").append(villagerState).append("\n\n");
 		sb.append("THE KING\n").append(kingContext).append('\n');
 		return sb.toString();

@@ -2,10 +2,13 @@
 
 A Fabric mod for Minecraft 26.2 that makes villagers smart. You are their king: sneak and right-click a smart
 villager, type anything into the box, and an AI decides what the villager does. Villagers act through a fixed
-set of safe actions (the things a player's hands can do), never by running code.
+set of safe tools (the things a player's hands can do), never by running code.
 
-**This is the Foundation release.** A villager can talk, follow you, walk to a spot and mine a block. Building,
-crafting, combat, ranks and chains of command are the next sub-projects (see `docs/superpowers/specs/`).
+**This is the Abilities release.** A smart villager can talk, follow, walk, mine, place and use blocks, break
+areas, carry and trade items, work chests, craft, smelt, brew, chop trees, farm, fish, shear, milk, breed and tame
+animals, fight, guard, flee, sit and sleep. It can run whole plans for long jobs and ask you questions in a pop-up.
+Building from blueprints, ranks and chains of command beyond relaying orders are the next sub-projects (see
+`docs/superpowers/specs/`).
 
 ## Setup
 
@@ -33,6 +36,11 @@ crafting, combat, ranks and chains of command are the next sub-projects (see `do
 | `maxSteps` | 20 | model calls per command |
 | `callsPerMinute` | 10 | per-villager rate limit (protects your bill) |
 | `actionRange` | 64 | how far an order may send a villager |
+| `respectProtection` | `true` | villagers obey spawn protection, the world border and protection mods like you do; `false` skips those checks |
+| `allowBreakBedrock` | `false` | `true` lets villagers break bedrock and other unbreakable blocks the way a creative-mode player can |
+| `maxScriptSteps` | 500 | most steps one task script may take |
+| `maxScriptSeconds` | 300 | longest one task script may run |
+| `maxScriptDepth` | 3 | deepest nesting inside a task script |
 
 If the config is missing a key, the mod still loads and tells you what to fix when you give an order.
 
@@ -46,6 +54,42 @@ If the config is missing a key, the mod still loads and tells you what to fix wh
 Talk normally: slang, typos, other languages, "mine that block" (the block you are looking at), questions.
 If it cannot do something yet it says so and offers the closest thing.
 
+### What villagers can do
+
+- **Look:** `look_around`, `look_at`, `check_inventory`.
+- **World:** `mine_block`, `place_block`, `use_block` (doors, levers, beds...), `break_area` (up to 16 blocks a side).
+- **Items:** `pick_up`, `drop`, `give_to_king`, `take_from_king`, `equip`, `use_item`, `eat`.
+- **Containers:** `open_container`, `put_in`, `take_out`.
+- **Making things:** `craft` (a crafting table within 16 blocks for big recipes), `smelt`, `brew`.
+- **Gathering:** `chop_tree`, `till`, `plant`, `harvest`, `fish`, `shear`, `milk`, `breed`, `tame`.
+- **Fighting:** `attack`, `shoot`, `guard`, `flee`. Villagers never hurt players or pets.
+- **Moving:** `go_to`, `follow_me`, `stop`, `sit`, `sleep`.
+- **Talking:** `say`, and `ask`, which pops up a dialog with options and a box for your own answer.
+- **Long jobs:** `run_script` runs a whole plan of the same tools (loops, conditions) without asking the AI again at
+  each step, and `stop_script` ends it. Telling the villager to stop also ends it.
+- **Chain of command:** a villager marked as a commander can `relay_order` to another smart villager, but only after
+  you approve it in the dialog.
+
+Villagers have their own 36-slot inventory, saved with them. Nothing is conjured: they gather, craft and carry.
+
+### Questions and risky acts
+
+- Lava, fire, TNT and other explosives, and breaking large areas always ask you first in a pop-up dialog. You can say
+  "you don't need to ask about fire" to switch that off for one villager (you confirm it once), and "ask me again" to
+  switch it back.
+- A villager only takes items from your inventory when you tell it to, shows you exactly what it wants, and waits for
+  your yes.
+
+### Known limits
+
+- **Not yet:** enchanting and anvils (villagers have no experience levels yet), building structures from blueprints,
+  and ranks. These are separate sub-projects.
+- **Protection mods:** villagers act through a hidden fake player. Protection and claims mods can see it as a
+  stranger and may refuse its actions even in your own claim. `respectProtection` only controls the checks this mod
+  makes itself.
+- **Trees:** a villager cannot climb, so it fells a tall tree only as high as it can reach.
+- **Fishing** is simulated: about one catch every 20 seconds near water with a rod.
+
 ## Developing
 
 ```bash
@@ -56,5 +100,3 @@ If it cannot do something yet it says so and offers the closest thing.
 
 Optional real-model checks before `runClientGameTest`: `VILLAGING_REAL_MODEL=<ollama model>` or
 `VILLAGING_GEMINI_KEY=<key>` (the key is only read from the environment, never stored in the repo).
-
-Not yet supported: protected-area mods (the mod only refuses to break bedrock and chests that hold items).

@@ -31,6 +31,19 @@ class SystemPromptTest {
 	}
 
 	@Test
+	void teachesTheAbilityRulesAndLimits() {
+		com.villaging.ai.tools.AbilityTools.registerAll();
+		String p = prompt();
+		assertTrue(p.contains("never hurt a player or a pet"), "missing the player and pet rule");
+		assertTrue(p.contains("risky"), "missing the risky-act rule");
+		assertTrue(p.contains("run_script"), "missing the script advice");
+		assertTrue(p.contains("look_around"), "missing the look-first advice");
+		assertTrue(p.contains("take_from_king"), "missing the taking rule");
+		assertTrue(p.contains("ask"), "missing the question tool");
+		assertTrue(p.contains("cannot do that yet"), "must stay honest about limits");
+	}
+
+	@Test
 	void includesKingContextAndLookedAtBlock() {
 		String p = prompt();
 		assertTrue(p.contains("Steve"));
