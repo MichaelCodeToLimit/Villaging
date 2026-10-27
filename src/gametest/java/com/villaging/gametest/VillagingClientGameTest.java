@@ -144,6 +144,12 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 			attempt("a risky step inside a script still asks the king", () -> scriptRiskyStepAsks(context, server));
 			attempt("a commander relays orders only with the king's approval", () -> commanderRelay(context, server));
 			attempt("container tools look in, fill and empty a chest", () -> containerTools(server));
+			attempt("review: a cancelled confirmation cannot be answered later", () -> reviewCancelledConfirmation(context, server));
+			attempt("review: an approved risky act can still be cancelled", () -> reviewApprovedActCanBeCancelled(context, server));
+			attempt("review: the running destruction total asks", () -> reviewDestructionTotalAsks(context, server));
+			attempt("review: item data survives and stacks stay valid", () -> reviewItemDataSurvives(context, server));
+			attempt("review: respectProtection=false skips the range limit", () -> reviewRangeSkippedWithoutProtection(server));
+			attempt("review: no shooting through the king", () -> reviewLineOfFire(server));
 			attempt("end to end: one order becomes a script that builds a chest", () -> getLogsAndMakeAChest(context, server));
 			attempt("a command from a non-king is ignored", () -> forgedPacket(context, server));
 		} finally {
@@ -1092,6 +1098,139 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 		require(ollama.requests.size() == 2, "expected exactly 2 model calls (the order, then the result), saw " + ollama.requests.size());
 		require(ollama.requests.get(1).contains("ok: ran 5 steps"), "the model was not told the script finished: " + ollama.requests.get(1));
 		require(server.computeOnServer(srv -> v.getCustomName() != null), "the villager lost its name");
+	}
+
+	private static ItemStack named(net.minecraft.world.item.Item item, int count, String name) {
+		ItemStack stack = new ItemStack(item, count);
+		stack.set(net.minecraft.core.component.DataComponents.CUSTOM_NAME, net.minecraft.network.chat.Component.literal(name));
+		return stack;
+	}
+
+	private static boolean hasName(ItemStack stack, String name) {
+		net.minecraft.network.chat.Component n = stack.get(net.minecraft.core.component.DataComponents.CUSTOM_NAME);
+		return n != null && n.getString().equals(name);
+	}
+
+	/** A closed question (the call was cancelled) must not be answerable later. */
+	private void reviewCancelledConfirmation(ClientGameTestContext context, TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		server.runCommand("clear @p");
+		server.runCommand("give @p minecraft:gold_ingot 10");
+		Villager v = spawnVillager(server, 0, 100, 0);
+		CompletableFuture<String> take = toolAsync(server, v, "take_from_king", "{\"item\":\"minecraft:gold_ingot\",\"count\":10}");
+		context.waitForScreen(AskScreen.class);
+		server.runOnServer(srv -> take.cancel(true)); // a newer command cancels the old call
+		waitTicks(server, 10);
+		context.runOnClient(mc -> ((AskScreen) mc.gui.screen()).choose("Yes")); // the stale dialog is still on screen
+		waitTicks(server, 20);
+		require(kingCount(server, Items.GOLD_INGOT) == 10 && villagerCount(server, v, Items.GOLD_INGOT) == 0,
+				"a cancelled confirmation still took the items");
+	}
+
+	/** Once approved, a risky act must still be stoppable. */
+	private void reviewApprovedActCanBeCancelled(ClientGameTestContext context, TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		server.runCommand("fill 2 100 0 6 103 3 minecraft:stone");
+		Villager v = spawnVillager(server, 0, 100, 4);
+		CompletableFuture<String> run = toolAsync(server, v, "break_area", "{\"x1\":2,\"y1\":100,\"z1\":0,\"x2\":6,\"y2\":103,\"z2\":3}");
+		answerDialog(context, "Yes");
+		waitTicks(server, 40);
+		require(server.computeOnServer(srv -> ActionManager.isControlled(v)), "the approved act never started");
+		server.runOnServer(srv -> run.cancel(true));
+		waitTicks(server, 20);
+		require(!server.computeOnServer(srv -> ActionManager.isControlled(v)), "the villager kept working after the call was cancelled");
+	}
+
+	/** Many small jobs add up to mass destruction and then ask. */
+	private void reviewDestructionTotalAsks(ClientGameTestContext context, TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager v = spawnVillager(server, 0, 100, 0);
+		MinecraftActionExecutor exec = server.computeOnServer(srv -> new MinecraftActionExecutor(srv, v, playerId(server), VillagingConfig.defaults()));
+		String box = "{\"x1\":2,\"y1\":110,\"z1\":2,\"x2\":5,\"y2\":113,\"z2\":5}"; // 4x4x4 = 64 blocks of air each time
+		for (int i = 0; i < 2; i++) {
+			CompletableFuture<String> call = server.computeOnServer(srv -> exec.execute(new ToolCall("t", "break_area",
+					com.google.gson.JsonParser.parseString(box).getAsJsonObject())));
+			if (i == 0) {
+				require(awaitResult(server, call, 100).startsWith("ok"), "the first 64 blocks should not need a question");
+			} else {
+				answerDialog(context, "No");
+				require(awaitResult(server, call, 100).contains("the king said no"), "the running total did not trigger the question");
+			}
+		}
+	}
+
+	/** Names, enchantments and contents survive being handed over; and no oversized stacks. */
+	private void reviewItemDataSurvives(ClientGameTestContext context, TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		server.runCommand("clear @p");
+		server.runCommand("setblock 3 100 0 minecraft:chest");
+		Villager v = spawnVillager(server, 0, 100, 0);
+		server.runOnServer(srv -> VillagerInventories.get(v).addItem(named(Items.DIAMOND_SWORD, 1, "Excalibur")));
+		require(tool(server, v, "put_in", "{\"x\":3,\"y\":100,\"z\":0,\"item\":\"minecraft:diamond_sword\",\"count\":1}", 600).startsWith("ok: put 1"), "put_in failed");
+		require(server.computeOnServer(srv -> hasName(((net.minecraft.world.Container) srv.overworld().getBlockEntity(new BlockPos(3, 100, 0))).getItem(0), "Excalibur")),
+				"the sword lost its name in the chest");
+		require(tool(server, v, "take_out", "{\"x\":3,\"y\":100,\"z\":0,\"item\":\"minecraft:diamond_sword\",\"count\":1}", 600).startsWith("ok: took 1"), "take_out failed");
+		require(tool(server, v, "give_to_king", "{\"item\":\"minecraft:diamond_sword\",\"count\":1}", 600).startsWith("ok: gave"), "give failed");
+		require(server.computeOnServer(srv -> {
+			for (ItemStack s : srv.getPlayerList().getPlayers().get(0).getInventory().getNonEquipmentItems()) {
+				if (s.is(Items.DIAMOND_SWORD) && hasName(s, "Excalibur")) {
+					return true;
+				}
+			}
+			return false;
+		}), "the sword lost its name on the way to the king");
+		// The king's stacks move over whole and never as one oversized stack.
+		server.runCommand("give @p minecraft:cobblestone 500");
+		CompletableFuture<String> take = toolAsync(server, v, "take_from_king", "{\"item\":\"minecraft:cobblestone\",\"count\":500}");
+		answerDialog(context, "Yes");
+		require(awaitResult(server, take, 100).startsWith("ok: took 500"), "take_from_king 500 failed");
+		require(villagerCount(server, v, Items.COBBLESTONE) == 500, "wrong cobblestone count");
+		require(server.computeOnServer(srv -> {
+			VillagerInventory inv = VillagerInventories.get(v);
+			for (int i = 0; i < inv.getContainerSize(); i++) {
+				if (inv.getItem(i).getCount() > inv.getItem(i).getMaxStackSize()) {
+					return false;
+				}
+			}
+			return true;
+		}), "an oversized stack was created");
+		// drop keeps names too
+		server.runOnServer(srv -> VillagerInventories.get(v).addItem(named(Items.IRON_AXE, 1, "Splitter")));
+		require(tool(server, v, "drop", "{\"item\":\"minecraft:iron_axe\",\"count\":1}", 50).startsWith("ok: dropped"), "drop failed");
+		require(server.computeOnServer(srv -> srv.overworld().getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class,
+				new AABB(-6, 98, -6, 6, 104, 6), e -> hasName(e.getItem(), "Splitter")).size()) == 1, "the dropped axe lost its name");
+	}
+
+	/** With protection off, the range limit is skipped too. */
+	private void reviewRangeSkippedWithoutProtection(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager v = spawnVillager(server, 0, 100, 0);
+		require(tool(server, v, "look_at", "{\"x\":400,\"y\":100,\"z\":0}", 50).startsWith("invalid:"), "the default range should refuse a far block");
+		require(!tool(server, v, configWith(false, false), "look_at", "{\"x\":400,\"y\":100,\"z\":0}", 50).startsWith("invalid:"),
+				"respectProtection=false should skip the range limit");
+	}
+
+	/** A villager never shoots through the king or a pet. */
+	private void reviewLineOfFire(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager v = spawnVillager(server, 0, 100, 0);
+		int husk = mobId(server, "minecraft:husk", 9, 100, 0);
+		server.runOnServer(srv -> {
+			VillagerInventories.get(v).addItem(new ItemStack(Items.BOW));
+			VillagerInventories.get(v).addItem(new ItemStack(Items.ARROW, 4));
+		});
+		server.runCommand("tp @p 4 100 0");
+		String blocked = tool(server, v, "shoot", "{\"entity_id\":" + husk + "}", 200);
+		require(blocked.startsWith("failed") && blocked.contains("line of fire"), "shot through the king: " + blocked);
+		require(villagerCount(server, v, Items.ARROW) == 4, "an arrow was spent");
+		server.runCommand("tp @p 0 100 6");
+		require(tool(server, v, "shoot", "{\"entity_id\":" + husk + "}", 200).startsWith("ok: shot"), "a clear shot should work");
 	}
 
 	private static String toolCall(String name, String argsJson) {

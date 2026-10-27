@@ -52,15 +52,13 @@ final class ItemHandlers {
 				return failed("there is no item called " + args.get("item").getAsString());
 			}
 			VillagerInventory inventory = VillagerInventories.get(ctx.villager());
-			if (!inventory.remove(item, count)) {
+			java.util.List<ItemStack> taken = inventory.take(item, count);
+			if (taken == null) {
 				return failed("I only have " + inventory.count(item) + " " + name(item));
 			}
 			ServerLevel level = (ServerLevel) ctx.villager().level();
-			int left = count;
-			while (left > 0) {
-				int part = Math.min(left, new ItemStack(item).getMaxStackSize());
-				ctx.villager().spawnAtLocation(level, new ItemStack(item, part));
-				left -= part;
+			for (ItemStack stack : taken) {
+				ctx.villager().spawnAtLocation(level, stack);
 			}
 			return CompletableFuture.completedFuture("ok: dropped " + count + " " + name(item));
 		});
@@ -163,7 +161,7 @@ final class ItemHandlers {
 		// The model cannot prove the king ordered this, so the king always confirms the exact items.
 		String question = VillagerBrains.get(ctx.villager()).name() + " wants to take " + count + " " + name(item)
 				+ " from you. Allow it?";
-		return AskService.confirm(ctx, question).thenApply(yes -> {
+		return AskService.confirmThen(ctx, question, yes -> {
 			if (!yes) {
 				return "failed: the king said no";
 			}
@@ -179,20 +177,25 @@ final class ItemHandlers {
 			if (have < count) {
 				return "failed: the king only has " + have + " " + name(item);
 			}
+			// Move the king's real stacks (keeping names, enchantments and contents), never one oversized stack.
+			VillagerInventory inventory = VillagerInventories.get(ctx.villager());
 			int left = count;
+			int moved = 0;
 			for (ItemStack stack : king.getInventory().getNonEquipmentItems()) {
-				if (left > 0 && stack.is(item)) {
-					int take = Math.min(left, stack.getCount());
-					stack.shrink(take);
-					left -= take;
+				if (left <= 0 || !stack.is(item)) {
+					continue;
+				}
+				ItemStack part = stack.split(Math.min(left, stack.getCount()));
+				left -= part.getCount();
+				ItemStack overflow = inventory.addItem(part);
+				moved += part.getCount() - overflow.getCount();
+				if (!overflow.isEmpty()) {
+					king.getInventory().add(overflow);
+					break;
 				}
 			}
-			ItemStack overflow = VillagerInventories.get(ctx.villager()).addItem(new ItemStack(item, count));
-			if (!overflow.isEmpty()) {
-				king.getInventory().add(overflow);
-				return "failed: my inventory is full (returned the rest)";
-			}
-			return "ok: took " + count + " " + name(item) + " from the king";
+			return moved == count ? "ok: took " + count + " " + name(item) + " from the king"
+					: "failed: my inventory is full (took " + moved + " and returned the rest)";
 		});
 	}
 }

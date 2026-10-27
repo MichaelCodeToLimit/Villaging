@@ -23,7 +23,7 @@ public final class AgentLoop {
 	public static final String CANT_THINK = "I can't think right now.";
 	public static final String NO_ANSWER = "I'm not sure what to say, my king.";
 	public static final String TOO_BUSY = "Give me a moment to catch my breath.";
-	private static final long ACTION_TIMEOUT_SECONDS = 120;
+	private static final long DEFAULT_TOOL_TIMEOUT_SECONDS = 120;
 	private static final long RETRY_DELAY_MILLIS = 1500;
 
 	public interface Handle {
@@ -35,6 +35,7 @@ public final class AgentLoop {
 	private final BooleanSupplier callPermit;
 	private final long retryDelayMillis;
 	private final LongConsumer sleeper;
+	private long toolTimeoutSeconds = DEFAULT_TOOL_TIMEOUT_SECONDS;
 
 	public AgentLoop(AiProvider provider, int maxSteps) {
 		this(provider, maxSteps, () -> true);
@@ -53,6 +54,12 @@ public final class AgentLoop {
 		this.callPermit = callPermit;
 		this.retryDelayMillis = retryDelayMillis;
 		this.sleeper = sleeper;
+	}
+
+	/** How long one tool call may take before the loop gives up on it; long jobs need more than the default 120 s. */
+	public AgentLoop withToolTimeout(long seconds) {
+		this.toolTimeoutSeconds = seconds;
+		return this;
 	}
 
 	private static void sleep(long millis) {
@@ -191,7 +198,7 @@ public final class AgentLoop {
 				future.cancel(true);
 			}
 			try {
-				return future.get(ACTION_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+				return future.get(toolTimeoutSeconds, TimeUnit.SECONDS);
 			} catch (CancellationException e) {
 				return "failed: cancelled";
 			} catch (ExecutionException e) {

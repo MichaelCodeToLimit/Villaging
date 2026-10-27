@@ -68,4 +68,25 @@ public final class RiskPolicy {
 		}
 		return volume;
 	}
+
+	/** Blocks a felled tree is assumed to cost when counting destruction. */
+	public static final int TREE_VOLUME = 64;
+
+	/** How many blocks a call can break, for the running total that triggers the mass-destruction question. */
+	public static long destructionVolume(String toolName, JsonObject args) {
+		return switch (toolName) {
+			case "mine_block" -> 1L;
+			case "break_area" -> volume(args);
+			case "chop_tree" -> TREE_VOLUME;
+			default -> 0L;
+		};
+	}
+
+	/** Using these blocks explodes: a bed outside the Overworld, or a respawn anchor. */
+	public static Optional<Category> classifyBlockUse(String blockPath, boolean inOverworld) {
+		if (blockPath.equals("respawn_anchor") || (blockPath.endsWith("_bed") && !inOverworld)) {
+			return Optional.of(Category.EXPLOSIVE);
+		}
+		return Optional.empty();
+	}
 }

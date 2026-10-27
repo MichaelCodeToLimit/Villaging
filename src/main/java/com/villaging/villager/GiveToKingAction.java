@@ -46,15 +46,10 @@ public final class GiveToKingAction implements VillagerAction {
 			}
 			return Status.RUNNING;
 		}
-		inventory.remove(item, count);
-		int left = count;
-		while (left > 0) {
-			int part = Math.min(left, new ItemStack(item).getMaxStackSize());
-			ItemStack stack = new ItemStack(item, part);
+		for (ItemStack stack : inventory.take(item, count)) {
 			if (!king.getInventory().add(stack) || !stack.isEmpty()) {
 				king.drop(stack, false);
 			}
-			left -= part;
 		}
 		return Status.done("gave the king " + count + " " + name);
 	}

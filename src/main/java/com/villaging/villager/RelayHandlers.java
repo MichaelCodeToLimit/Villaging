@@ -40,8 +40,8 @@ final class RelayHandlers {
 			}
 			Villager chosen = target;
 			String commander = VillagerBrains.get(ctx.villager()).name();
-			return AskService.confirm(ctx, commander + " wants " + VillagerBrains.get(chosen).name() + " to: " + order + ". Allow it?")
-					.thenApply(yes -> {
+			return AskService.confirmThen(ctx, commander + " wants " + VillagerBrains.get(chosen).name() + " to: " + order
+					+ ". Allow it?", yes -> {
 						if (!yes) {
 							return "failed: the king said no";
 						}

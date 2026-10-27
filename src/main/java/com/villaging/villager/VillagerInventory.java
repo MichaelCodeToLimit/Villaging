@@ -62,4 +62,29 @@ public final class VillagerInventory extends SimpleContainer {
 		setChanged();
 		return true;
 	}
+
+	/**
+	 * Takes exactly {@code amount} of {@code item} out and returns the real stacks (keeping names, enchantments and any
+	 * contents), each no bigger than its maximum size. Takes nothing and returns null when fewer are held.
+	 */
+	public java.util.List<ItemStack> take(Item item, int amount) {
+		if (amount < 1 || count(item) < amount) {
+			return null;
+		}
+		java.util.List<ItemStack> taken = new java.util.ArrayList<>();
+		int left = amount;
+		for (int i = 0; i < getContainerSize() && left > 0; i++) {
+			ItemStack stack = getItem(i);
+			if (stack.is(item)) {
+				ItemStack part = stack.split(Math.min(left, stack.getCount()));
+				left -= part.getCount();
+				taken.add(part);
+				if (stack.isEmpty()) {
+					setItem(i, ItemStack.EMPTY);
+				}
+			}
+		}
+		setChanged();
+		return taken;
+	}
 }

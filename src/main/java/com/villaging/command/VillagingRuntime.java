@@ -135,7 +135,8 @@ public final class VillagingRuntime implements CommandService.Backend {
 				id -> new RateLimiter(config.callsPerMinute(), System::nanoTime));
 		AtomicBoolean cancelled = new AtomicBoolean();
 
-		AgentLoop.Handle inner = new AgentLoop(provider, config.maxSteps(), limiter::tryAcquire).start(system, history,
+		AgentLoop.Handle inner = new AgentLoop(provider, config.maxSteps(), limiter::tryAcquire)
+				.withToolTimeout(Math.max(120, config.maxScriptSeconds()) + 30L).start(system, history,
 				message, executor,
 				reply -> server.execute(() -> VillagerSpeech.say(server, villager, player, reply)),
 				produced -> server.execute(() -> {

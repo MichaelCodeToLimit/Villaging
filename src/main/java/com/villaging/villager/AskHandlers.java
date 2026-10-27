@@ -18,7 +18,7 @@ final class AskHandlers {
 			if (given != null && given.isJsonArray()) {
 				given.getAsJsonArray().forEach(o -> options.add(o.getAsString()));
 			}
-			return AskService.ask(ctx, args.get("question").getAsString(), options).thenApply(answer ->
+			return AskService.askThen(ctx, args.get("question").getAsString(), options, answer ->
 					answer.equals(PendingQuestions.NO_ANSWER)
 							? "failed: the king did not answer"
 							: "ok: the king answered \"" + answer + "\"");
@@ -31,8 +31,8 @@ final class AskHandlers {
 				return CompletableFuture.completedFuture("ok: I will ask the king first about " + category + " acts");
 			}
 			// The model cannot prove the king said so, so switching asking off always needs the king's own yes.
-			return AskService.confirm(ctx, "Should " + VillagerBrains.get(ctx.villager()).name()
-					+ " stop asking you before " + category + " acts?").thenApply(yes -> {
+			return AskService.confirmThen(ctx, "Should " + VillagerBrains.get(ctx.villager()).name()
+					+ " stop asking you before " + category + " acts?", yes -> {
 						if (!yes) {
 							return "failed: the king said no";
 						}

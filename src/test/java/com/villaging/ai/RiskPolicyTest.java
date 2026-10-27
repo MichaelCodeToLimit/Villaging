@@ -61,4 +61,21 @@ class RiskPolicyTest {
 		assertTrue(RiskPolicy.mustAsk(fire, Set.of("lava")));
 		assertFalse(RiskPolicy.mustAsk(Optional.empty(), Set.of()));
 	}
+
+	@Test
+	void destructionVolumeCountsBlocksEachCallCanBreak() {
+		assertEquals(1L, RiskPolicy.destructionVolume("mine_block", args("{\"x\":1,\"y\":2,\"z\":3}")));
+		assertEquals(64L, RiskPolicy.destructionVolume("break_area", args("{\"x1\":1,\"y1\":1,\"z1\":1,\"x2\":4,\"y2\":4,\"z2\":4}")));
+		assertEquals((long) RiskPolicy.TREE_VOLUME, RiskPolicy.destructionVolume("chop_tree", args("{\"x\":1,\"y\":2,\"z\":3}")));
+		assertEquals(0L, RiskPolicy.destructionVolume("place_block", args("{}")));
+		assertEquals(0L, RiskPolicy.destructionVolume("look_around", args("{}")));
+	}
+
+	@Test
+	void bedsOutsideTheOverworldAndRespawnAnchorsExplode() {
+		assertEquals(Optional.of(RiskPolicy.Category.EXPLOSIVE), RiskPolicy.classifyBlockUse("red_bed", false));
+		assertEquals(Optional.empty(), RiskPolicy.classifyBlockUse("red_bed", true));
+		assertEquals(Optional.of(RiskPolicy.Category.EXPLOSIVE), RiskPolicy.classifyBlockUse("respawn_anchor", true));
+		assertEquals(Optional.empty(), RiskPolicy.classifyBlockUse("oak_door", false));
+	}
 }

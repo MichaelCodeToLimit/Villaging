@@ -77,21 +77,24 @@ public final class ContainerAction implements VillagerAction {
 	private Status put(Villager villager, Container container, String where) {
 		VillagerInventory inventory = VillagerInventories.get(villager);
 		String name = new ItemStack(item).getHoverName().getString();
-		if (!inventory.remove(item, count)) {
+		java.util.List<ItemStack> taken = inventory.take(item, count);
+		if (taken == null) {
 			return Status.failed("I only have " + inventory.count(item) + " " + name);
 		}
-		int maxStack = new ItemStack(item).getMaxStackSize();
+		// Move the real stacks (keeping names, enchantments and contents) and keep whatever does not fit.
 		int stored = 0;
-		int left = count;
-		while (left > 0) {
-			int size = Math.min(left, maxStack);
-			ItemStack remainder = HopperBlockEntity.addItem(null, container, new ItemStack(item, size), null);
+		boolean full = false;
+		for (ItemStack stack : taken) {
+			if (full) {
+				inventory.addItem(stack);
+				continue;
+			}
+			int size = stack.getCount();
+			ItemStack remainder = HopperBlockEntity.addItem(null, container, stack, null);
 			stored += size - remainder.getCount();
-			left -= size;
 			if (!remainder.isEmpty()) {
-				// The container is full: keep what did not fit, including the parts never tried.
-				giveBack(inventory, remainder.getCount() + left);
-				break;
+				inventory.addItem(remainder);
+				full = true;
 			}
 		}
 		container.setChanged();
@@ -100,15 +103,6 @@ public final class ContainerAction implements VillagerAction {
 		}
 		return Status.done("put " + stored + " " + name + " in the " + where
 				+ (stored < count ? " (it filled up; kept the other " + (count - stored) + ")" : ""));
-	}
-
-	private void giveBack(VillagerInventory inventory, int amount) {
-		int maxStack = new ItemStack(item).getMaxStackSize();
-		while (amount > 0) {
-			int size = Math.min(amount, maxStack);
-			inventory.addItem(new ItemStack(item, size));
-			amount -= size;
-		}
 	}
 
 	private Status take(Villager villager, Container container, String where) {

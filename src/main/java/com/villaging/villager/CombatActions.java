@@ -137,6 +137,15 @@ final class CombatActions {
 			if (!villager.hasLineOfSight(target)) {
 				return Status.failed("I can't see the " + name(target) + " clearly enough to shoot");
 			}
+			Vec3 eye = villager.getEyePosition();
+			Vec3 aimAt = target.getBoundingBox().getCenter();
+			for (Entity inLine : level.getEntities(villager, new net.minecraft.world.phys.AABB(eye, aimAt).inflate(1.0),
+					e -> e != target && e.isAlive())) {
+				if (Protection.entityProblem(inLine) != null
+						&& inLine.getBoundingBox().inflate(0.4).clip(eye, aimAt).isPresent()) {
+					return Status.failed("the " + name(inLine) + " is in the line of fire, so I won't shoot");
+				}
+			}
 			VillagerHands hands = HandsManager.get(villager);
 			hands.syncFrom();
 			VillagerPlayer player = hands.player();
