@@ -21,7 +21,7 @@ public final class VillagerState {
 				villager.getY(), villager.getZ(), villager.getHealth(), villager.getMaxHealth()));
 
 		Map<String, Integer> items = new TreeMap<>();
-		SimpleContainer inventory = villager.getInventory();
+		SimpleContainer inventory = VillagerInventories.get(villager);
 		for (int i = 0; i < inventory.getContainerSize(); i++) {
 			ItemStack stack = inventory.getItem(i);
 			if (!stack.isEmpty()) {

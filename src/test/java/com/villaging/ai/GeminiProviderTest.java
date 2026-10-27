@@ -36,7 +36,7 @@ class GeminiProviderTest {
 			assertEquals("user", first.get("role").getAsString());
 			assertEquals("hello", first.getAsJsonArray("parts").get(0).getAsJsonObject().get("text").getAsString());
 			JsonArray declarations = body.getAsJsonArray("tools").get(0).getAsJsonObject().getAsJsonArray("functionDeclarations");
-			assertEquals(5, declarations.size());
+			assertEquals(Tools.all().size(), declarations.size());
 		}
 	}
 

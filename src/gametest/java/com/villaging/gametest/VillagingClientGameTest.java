@@ -1,23 +1,37 @@
 package com.villaging.gametest;
 
 import com.villaging.ModItems;
+import com.villaging.ai.ToolCall;
+import com.villaging.ai.ToolDef;
+import com.villaging.ai.ToolSchema;
+import com.villaging.ai.Tools;
+import com.villaging.client.AskScreen;
 import com.villaging.client.VillagerChatScreen;
+import com.villaging.config.VillagingConfig;
 import com.villaging.king.KingData;
 import com.villaging.king.Kings;
+import com.villaging.net.AnswerPayload;
 import com.villaging.net.CommandPayload;
 import com.villaging.villager.ActionManager;
 import com.villaging.villager.FollowAction;
 import com.villaging.villager.GoToAction;
+import com.villaging.villager.HandsManager;
+import com.villaging.villager.MinecraftActionExecutor;
+import com.villaging.villager.ToolHandlers;
+import com.villaging.villager.VillagerHands;
 import com.villaging.villager.MineAction;
 import com.villaging.villager.SpeechBubble;
 import com.villaging.villager.VillagerSpeech;
 import com.villaging.villager.VillagerAction;
 import com.villaging.villager.VillagerBrain;
 import com.villaging.villager.VillagerBrains;
+import com.villaging.villager.VillagerInventories;
+import com.villaging.villager.VillagerInventory;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
@@ -35,6 +49,7 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.npc.villager.Villager;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
@@ -43,6 +58,11 @@ import org.lwjgl.glfw.GLFW;
 public class VillagingClientGameTest implements FabricClientGameTest {
 	private final List<String> failures = new ArrayList<>();
 	private FakeOllama ollama;
+
+	@FunctionalInterface
+	private interface AskResponder {
+		void respond(ClientGameTestContext context) throws Exception;
+	}
 
 	@FunctionalInterface
 	private interface Check {
@@ -89,12 +109,48 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 			attempt("follow_me keeps the villager near the king", () -> follow(server));
 			attempt("stop cancels the running action", () -> stop(server));
 			attempt("a villager removed mid-action fails cleanly", () -> removedMidAction(server));
+			attempt("a villager keeps its own saved 36-slot inventory", () -> villagerInventory(server));
+			attempt("the villager fake player is hidden, holds items and is released", () -> villagerHands(server));
 			attempt("the crown works through the real click hook (vanilla trading would eat it otherwise)", () -> crownViaClickHook(server));
 			attempt("mine_block refuses in adventure mode", () -> mineProtectedAdventure(server));
 			attempt("mine_block honours another mod vetoing the break", () -> mineVetoed(server));
+			attempt("allowBreakBedrock lets a villager break bedrock like a creative player", () -> mineBedrockAllowed(server));
+			attempt("respectProtection=false skips protection checks", () -> mineVetoIgnored(server));
 			attempt("speech bubble text never stays as the villager name", () -> bubbleRestored(server));
 			attempt("sneak-click on a smart villager opens the chat screen", () -> sneakClick(context, server));
 			attempt("typing in the chat screen drives the villager end to end", () -> endToEnd(context, server));
+			attempt("ask opens the dialog and an option button answers the model", () -> askRound(context, server, "Left", c -> c.runOnClient(mc -> ((AskScreen) mc.gui.screen()).choose("Left")), "ok: the king answered \"Left\""));
+			attempt("ask accepts the king's own typed answer", () -> askRound(context, server, "Burn it all", c -> { c.getInput().typeChars("Burn it all"); c.getInput().pressKey(GLFW.GLFW_KEY_ENTER); }, "ok: the king answered \"Burn it all\""));
+			attempt("closing the ask dialog reads as no answer", () -> askRound(context, server, null, c -> c.runOnClient(mc -> mc.gui.screen().onClose()), "failed: the king did not answer"));
+			attempt("look_around, look_at and check_inventory report the surroundings", () -> lookTools(server));
+			attempt("place_block places from the inventory and respects protection", () -> placeBlock(server));
+			attempt("use_block flips a lever", () -> useBlock(server));
+			attempt("break_area clears a box", () -> breakArea(server));
+			attempt("risky acts ask the king first and asking can be switched off", () -> riskGate(context, server));
+			attempt("item tools pick up, drop, hand over, take (with consent), equip and eat", () -> itemTools(context, server));
+			attempt("craft makes small recipes anywhere and big ones at a table", () -> craftTools(server));
+			attempt("smelt cooks raw iron in a furnace", () -> smeltTool(server));
+			attempt("brew makes potions in a brewing stand", () -> brewTool(server));
+			attempt("chop_tree fells a tree", () -> chopTree(server));
+			attempt("till, plant and harvest farm a crop", () -> farming(server));
+			attempt("shear, milk, breed and tame work on animals", () -> animals(server));
+			attempt("fish catches something near water", () -> fishing(server));
+			attempt("attack kills a hostile creature", () -> combatAttack(server));
+			attempt("players and pets are never attacked or shot", () -> combatNeverHurtsPlayersOrPets(server));
+			attempt("shoot hits a target with a bow", () -> combatShoot(server));
+			attempt("guard protects the king and spares pets, flee runs away", () -> combatGuardAndFlee(server));
+			attempt("sit stays put and sleep lies down at night and wakes at dawn", () -> sitAndSleep(server));
+			attempt("task scripts run, fail cleanly, obey limits and stop", () -> scripts(context, server));
+			attempt("a risky step inside a script still asks the king", () -> scriptRiskyStepAsks(context, server));
+			attempt("a commander relays orders only with the king's approval", () -> commanderRelay(context, server));
+			attempt("container tools look in, fill and empty a chest", () -> containerTools(server));
+			attempt("review: a cancelled confirmation cannot be answered later", () -> reviewCancelledConfirmation(context, server));
+			attempt("review: an approved risky act can still be cancelled", () -> reviewApprovedActCanBeCancelled(context, server));
+			attempt("review: the running destruction total asks", () -> reviewDestructionTotalAsks(context, server));
+			attempt("review: item data survives and stacks stay valid", () -> reviewItemDataSurvives(context, server));
+			attempt("review: respectProtection=false skips the range limit", () -> reviewRangeSkippedWithoutProtection(server));
+			attempt("review: no shooting through the king", () -> reviewLineOfFire(server));
+			attempt("end to end: one order becomes a script that builds a chest", () -> getLogsAndMakeAChest(context, server));
 			attempt("a command from a non-king is ignored", () -> forgedPacket(context, server));
 		} finally {
 			ollama.close();
@@ -132,7 +188,10 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 	}
 
 	private static void resetArena(TestServerContext server) {
+		server.runCommand("difficulty peaceful");
 		server.runCommand("kill @e[type=minecraft:villager]");
+		// A killed villager lingers for a second while it dies and would still block placing blocks.
+		server.waitFor(srv -> srv.overworld().getEntitiesOfClass(Villager.class, new AABB(-16, 90, -16, 16, 116, 16)).isEmpty(), 100);
 		server.runCommand("kill @e[type=minecraft:item]");
 		server.runCommand("fill -16 100 -16 16 115 16 air");
 		server.runCommand("tp @p 0 100 2");
@@ -321,6 +380,930 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 		String result = awaitResult(server, startAction(server, v, new MineAction(target, playerId(server))), 400);
 		require(result.startsWith("failed") && result.contains("protect"), "expected a veto refusal, got " + result);
 		require(server.computeOnServer(srv -> srv.overworld().getBlockState(target).is(Blocks.STONE)), "vetoed block was mined");
+	}
+
+	private static VillagingConfig configWith(boolean respectProtection, boolean allowBreakBedrock) {
+		VillagingConfig d = VillagingConfig.defaults();
+		return new VillagingConfig(d.provider(), d.apiKey(), d.model(), d.cloudUrl(), d.ollamaUrl(), d.ollamaModel(),
+				d.geminiModel(), d.geminiUrl(), d.maxSteps(), d.callsPerMinute(), d.actionRange(), respectProtection,
+				allowBreakBedrock, d.maxScriptSteps(), d.maxScriptSeconds(), d.maxScriptDepth());
+	}
+
+	private void mineBedrockAllowed(TestServerContext server) throws Exception {
+		resetArena(server);
+		BlockPos target = new BlockPos(4, 100, 0);
+		server.runOnServer(srv -> srv.overworld().setBlockAndUpdate(target, Blocks.BEDROCK.defaultBlockState()));
+		Villager v = spawnVillager(server, 0, 100, 0);
+		String result = awaitResult(server, startAction(server, v, new MineAction(target, playerId(server), configWith(true, true))), 1200);
+		require(result.startsWith("ok: mined"), "expected bedrock to be mined, got " + result);
+		require(server.computeOnServer(srv -> srv.overworld().getBlockState(target).isAir()), "bedrock is still there");
+	}
+
+	private void mineVetoIgnored(TestServerContext server) throws Exception {
+		resetArena(server);
+		BlockPos target = new BlockPos(9, 100, 9);
+		server.runOnServer(srv -> srv.overworld().setBlockAndUpdate(target, Blocks.STONE.defaultBlockState()));
+		Villager v = spawnVillager(server, 8, 100, 8);
+		String result = awaitResult(server, startAction(server, v, new MineAction(target, playerId(server), configWith(false, false))), 1200);
+		require(result.startsWith("ok: mined"), "expected the veto to be ignored, got " + result);
+	}
+
+	private void villagerInventory(TestServerContext server) {
+		resetArena(server);
+		Villager v = spawnVillager(server, 0, 100, 0);
+		server.runOnServer(srv -> {
+			VillagerInventory inv = VillagerInventories.get(v);
+			inv.addItem(new ItemStack(Items.OAK_LOG, 64));
+			inv.addItem(new ItemStack(Items.OAK_LOG, 10));
+			inv.addItem(new ItemStack(Items.STICK, 3));
+		});
+		require(36 == server.computeOnServer(srv -> VillagerInventories.get(v).getContainerSize()), "inventory is not 36 slots");
+		require(74 == server.computeOnServer(srv -> VillagerInventories.get(v).count(Items.OAK_LOG)), "log count wrong");
+		require(!server.computeOnServer(srv -> VillagerInventories.get(v).remove(Items.OAK_LOG, 75)), "removed more than held");
+		require(74 == server.computeOnServer(srv -> VillagerInventories.get(v).count(Items.OAK_LOG)), "failed remove changed the count");
+		require(server.computeOnServer(srv -> VillagerInventories.get(v).remove(Items.OAK_LOG, 70)), "could not remove 70");
+		require(4 == server.computeOnServer(srv -> VillagerInventories.get(v).count(Items.OAK_LOG)), "wrong remainder after remove");
+		// Saved with the villager: encode and decode through the same codec the attachment uses.
+		int after = server.computeOnServer(srv -> {
+			var ops = net.minecraft.resources.RegistryOps.create(net.minecraft.nbt.NbtOps.INSTANCE, srv.registryAccess());
+			var tag = VillagerInventory.CODEC.encodeStart(ops, VillagerInventories.get(v)).getOrThrow();
+			return VillagerInventory.CODEC.parse(ops, tag).getOrThrow().count(Items.STICK);
+		});
+		require(after == 3, "inventory did not survive saving, sticks=" + after);
+	}
+
+	private void villagerHands(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager v = spawnVillager(server, 0, 100, 0);
+		server.runOnServer(srv -> VillagerInventories.get(v).addItem(new ItemStack(Items.STONE, 5)));
+		int players = server.computeOnServer(srv -> srv.getPlayerList().getPlayers().size());
+		int fakeId = server.computeOnServer(srv -> {
+			VillagerHands hands = HandsManager.get(v);
+			hands.syncFrom();
+			return hands.player().getId();
+		});
+		require(server.computeOnServer(srv -> srv.getPlayerList().getPlayers().size()) == players, "fake player joined the player list");
+		require(server.computeOnServer(srv -> srv.overworld().getEntity(fakeId)) == null, "fake player is in the world");
+		require(server.computeOnServer(srv -> HandsManager.get(v).player().position().distanceTo(v.position())) < 0.01, "hands are not at the villager");
+		require(server.computeOnServer(srv -> HandsManager.get(v).hold(Items.STONE)), "could not hold stone");
+		require(server.computeOnServer(srv -> HandsManager.get(v).player().getMainHandItem().is(Items.STONE)), "fake player is not holding stone");
+		require(server.computeOnServer(srv -> v.getMainHandItem().is(Items.STONE)), "villager does not show the held stone");
+		require(!server.computeOnServer(srv -> HandsManager.get(v).hold(Items.DIAMOND)), "held an item it does not have");
+		server.runOnServer(srv -> HandsManager.get(v).player().getInventory().getItem(0).shrink(0));
+		server.runOnServer(srv -> HandsManager.get(v).syncTo());
+		require(5 == server.computeOnServer(srv -> VillagerInventories.get(v).count(Items.STONE)), "syncTo changed the villager inventory");
+		require(HandsManager.size() == 1, "expected one hands object, got " + HandsManager.size());
+		server.runCommand("kill @e[type=minecraft:villager]");
+		server.waitFor(srv -> HandsManager.size() == 0, 200);
+		require(HandsManager.size() == 0, "hands were not released when the villager died");
+	}
+
+	/** Runs one model-asks-the-king round: dialog opens, {@code respond} answers it, the model sees {@code expected}. */
+	private void askRound(ClientGameTestContext context, TestServerContext server, String unused,
+			AskResponder respond, String expected) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager v = spawnVillager(server, 0, 100, 0);
+		server.runOnServer(srv -> VillagerBrains.set(v, VillagerBrain.DEFAULT.makeSmart("Alma")));
+		int id = server.computeOnServer(srv -> v.getId());
+		ollama.script(
+				"{\"message\":{\"role\":\"assistant\",\"content\":\"\",\"tool_calls\":[{\"function\":{\"name\":\"ask\",\"arguments\":{\"question\":\"Which way?\",\"options\":[\"Left\",\"Right\"]}}}]}}",
+				"{\"message\":{\"role\":\"assistant\",\"content\":\"Understood.\"}}");
+		context.runOnClient(mc -> ClientPlayNetworking.send(new CommandPayload(id, "decide for me")));
+		context.waitForScreen(AskScreen.class);
+		context.takeScreenshot("villaging-ask-dialog");
+		// A forged or stale answer must not close or answer the real question.
+		context.runOnClient(mc -> ClientPlayNetworking.send(new AnswerPayload(12345L, "Right")));
+		context.waitTicks(5);
+		require(context.computeOnClient(mc -> mc.gui.screen() instanceof AskScreen), "a stale answer closed the dialog");
+		respond.respond(context);
+		server.waitFor(srv -> ollama.requests.size() >= 2, 600);
+		require(ollama.requests.size() >= 2, "the model never got the answer");
+		String second = ollama.requests.get(1);
+		require(second.contains(expected.replace("\"", "\\\"")), "expected the tool result '" + expected + "' in: " + second);
+	}
+
+	/** Runs one tool through the real validate, risk gate and handler path with no model, and returns its result. */
+	private static String tool(TestServerContext server, Villager v, String name, String argsJson, int ticks) throws Exception {
+		return tool(server, v, VillagingConfig.defaults(), name, argsJson, ticks);
+	}
+
+	private static String tool(TestServerContext server, Villager v, VillagingConfig config, String name, String argsJson,
+			int ticks) throws Exception {
+		UUID king = playerId(server);
+		CompletableFuture<String> future = server.computeOnServer(srv -> {
+			MinecraftActionExecutor exec = new MinecraftActionExecutor(srv, v, king, config);
+			ToolCall call = new ToolCall("t", name, com.google.gson.JsonParser.parseString(argsJson).getAsJsonObject());
+			Optional<String> bad = exec.validate(call);
+			return bad.isPresent() ? CompletableFuture.completedFuture("invalid: " + bad.get()) : exec.execute(call);
+		});
+		return awaitResult(server, future, ticks);
+	}
+
+	private void lookTools(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		server.runCommand("setblock 3 100 0 minecraft:chest");
+		server.runCommand("item replace block 3 100 0 container.0 with minecraft:diamond 3");
+		server.runCommand("setblock -3 100 0 minecraft:iron_ore");
+		Villager v = spawnVillager(server, 0, 100, 0);
+		server.runOnServer(srv -> VillagerInventories.get(v).addItem(new ItemStack(Items.APPLE, 4)));
+		String around = tool(server, v, "look_around", "{}", 20);
+		require(around.startsWith("ok:") && around.contains("chest") && around.contains("iron_ore") && around.contains("3, 100, 0"),
+				"look_around missed the chest or ore: " + around);
+		require(around.contains("villager") || around.contains("Creatures"), "look_around has no creatures section: " + around);
+		String at = tool(server, v, "look_at", "{\"x\":3,\"y\":100,\"z\":0}", 20);
+		require(at.contains("chest") && at.contains("diamond") && at.contains("3"), "look_at did not show the chest contents: " + at);
+		String inv = tool(server, v, "check_inventory", "{}", 20);
+		require(inv.contains("apple") && inv.contains("4"), "check_inventory wrong: " + inv);
+		require(tool(server, v, "look_around", "{\"radius\":99}", 20).startsWith("invalid:"), "radius 99 was accepted");
+	}
+
+	private void placeBlock(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager v = spawnVillager(server, 0, 100, 0);
+		server.runOnServer(srv -> VillagerInventories.get(v).addItem(new ItemStack(Items.OAK_PLANKS, 5)));
+		BlockPos target = new BlockPos(3, 100, 0);
+		String result = tool(server, v, "place_block", "{\"item\":\"minecraft:oak_planks\",\"x\":3,\"y\":100,\"z\":0}", 600);
+		require(result.startsWith("ok: placed"), "expected placement, got " + result);
+		require(server.computeOnServer(srv -> srv.overworld().getBlockState(target).is(Blocks.OAK_PLANKS)), "no planks at the target");
+		require(4 == server.computeOnServer(srv -> VillagerInventories.get(v).count(Items.OAK_PLANKS)), "planks were not used up");
+		String taken = tool(server, v, "place_block", "{\"item\":\"minecraft:oak_planks\",\"x\":3,\"y\":100,\"z\":0}", 200);
+		require(taken.startsWith("failed") && taken.contains("taken"), "expected an occupied-spot failure, got " + taken);
+		String none = tool(server, v, "place_block", "{\"item\":\"minecraft:diamond_block\",\"x\":4,\"y\":100,\"z\":0}", 200);
+		require(none.startsWith("failed") && none.contains("don't have"), "expected a missing-item failure, got " + none);
+		String floating = tool(server, v, "place_block", "{\"item\":\"minecraft:oak_planks\",\"x\":8,\"y\":105,\"z\":8}", 200);
+		require(floating.startsWith("failed") && floating.contains("build against"), "expected no-support failure, got " + floating);
+		// Protection: an adventure-mode king may not build, unless protection is switched off.
+		server.runCommand("gamemode adventure @p");
+		String blocked = tool(server, v, "place_block", "{\"item\":\"minecraft:oak_planks\",\"x\":4,\"y\":100,\"z\":0}", 200);
+		require(blocked.startsWith("failed") && blocked.contains("protected"), "expected a protection failure, got " + blocked);
+		String allowed = tool(server, v, configWith(false, false), "place_block",
+				"{\"item\":\"minecraft:oak_planks\",\"x\":4,\"y\":100,\"z\":0}", 600);
+		require(allowed.startsWith("ok: placed"), "respectProtection=false should allow it, got " + allowed);
+		server.runCommand("gamemode creative @p");
+	}
+
+	private void useBlock(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		server.runCommand("setblock 3 100 0 minecraft:lever[face=floor]");
+		Villager v = spawnVillager(server, 0, 100, 0);
+		BlockPos lever = new BlockPos(3, 100, 0);
+		require(!server.computeOnServer(srv -> srv.overworld().getBlockState(lever).getValue(
+				net.minecraft.world.level.block.LeverBlock.POWERED)), "lever started on");
+		String result = tool(server, v, "use_block", "{\"x\":3,\"y\":100,\"z\":0}", 400);
+		require(result.startsWith("ok: used"), "expected the lever to be used, got " + result);
+		require(server.computeOnServer(srv -> srv.overworld().getBlockState(lever).getValue(
+				net.minecraft.world.level.block.LeverBlock.POWERED)), "lever did not flip");
+	}
+
+	private void breakArea(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		server.runCommand("fill 4 100 0 6 102 2 minecraft:dirt");
+		Villager v = spawnVillager(server, 0, 100, 0);
+		String result = tool(server, v, "break_area", "{\"x1\":4,\"y1\":100,\"z1\":0,\"x2\":6,\"y2\":102,\"z2\":2}", 6000);
+		require(result.equals("ok: broke 27 blocks"), "expected 27 blocks, got " + result);
+		require(server.computeOnServer(srv -> srv.overworld().getBlockState(new BlockPos(5, 101, 1)).isAir()), "dirt is still there");
+		require(tool(server, v, "break_area", "{\"x1\":0,\"y1\":100,\"z1\":0,\"x2\":16,\"y2\":100,\"z2\":0}", 20).startsWith("invalid:"),
+				"a 17-wide box was accepted");
+	}
+
+	/** Starts a tool without waiting, for tools that wait on the king's answer in the dialog. */
+	private static CompletableFuture<String> toolAsync(TestServerContext server, Villager v, String name, String argsJson) {
+		UUID king = playerId(server);
+		return server.computeOnServer(srv -> {
+			MinecraftActionExecutor exec = new MinecraftActionExecutor(srv, v, king, VillagingConfig.defaults());
+			ToolCall call = new ToolCall("t", name, com.google.gson.JsonParser.parseString(argsJson).getAsJsonObject());
+			Optional<String> bad = exec.validate(call);
+			return bad.isPresent() ? CompletableFuture.completedFuture("invalid: " + bad.get()) : exec.execute(call);
+		});
+	}
+
+	private static int kingCount(TestServerContext server, net.minecraft.world.item.Item item) {
+		return server.computeOnServer(srv -> {
+			int total = 0;
+			for (ItemStack s : srv.getPlayerList().getPlayers().get(0).getInventory().getNonEquipmentItems()) {
+				if (s.is(item)) {
+					total += s.getCount();
+				}
+			}
+			return total;
+		});
+	}
+
+	private static int villagerCount(TestServerContext server, Villager v, net.minecraft.world.item.Item item) {
+		return server.computeOnServer(srv -> VillagerInventories.get(v).count(item));
+	}
+
+	private void itemTools(ClientGameTestContext context, TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		server.runCommand("clear @p");
+		// pick_up
+		server.runCommand("summon minecraft:item 3 100 0 {Item:{id:\"minecraft:cobblestone\",count:4}}");
+		Villager v = spawnVillager(server, 0, 100, 0);
+		String picked = tool(server, v, "pick_up", "{\"item\":\"minecraft:cobblestone\"}", 600);
+		require(picked.startsWith("ok: picked up 4"), "pick_up said " + picked);
+		require(villagerCount(server, v, Items.COBBLESTONE) == 4, "cobblestone is not in the inventory");
+		require(tool(server, v, "pick_up", "{}", 200).startsWith("failed"), "pick_up with nothing around should fail");
+		// drop
+		String dropped = tool(server, v, "drop", "{\"item\":\"minecraft:cobblestone\",\"count\":3}", 100);
+		require(dropped.startsWith("ok: dropped 3"), "drop said " + dropped);
+		require(villagerCount(server, v, Items.COBBLESTONE) == 1, "drop did not take the items from the inventory");
+		require(tool(server, v, "drop", "{\"item\":\"minecraft:cobblestone\",\"count\":5}", 100).startsWith("failed"), "dropped more than held");
+		// give_to_king
+		server.runOnServer(srv -> VillagerInventories.get(v).addItem(new ItemStack(Items.IRON_INGOT, 6)));
+		String gave = tool(server, v, "give_to_king", "{\"item\":\"minecraft:iron_ingot\",\"count\":4}", 600);
+		require(gave.startsWith("ok: gave the king 4"), "give_to_king said " + gave);
+		require(kingCount(server, Items.IRON_INGOT) == 4 && villagerCount(server, v, Items.IRON_INGOT) == 2, "iron did not move 4 to the king");
+		// take_from_king: asks, and moves exactly the named amount only on a yes.
+		server.runCommand("give @p minecraft:gold_ingot 10");
+		CompletableFuture<String> refused = toolAsync(server, v, "take_from_king", "{\"item\":\"minecraft:gold_ingot\",\"count\":4}");
+		answerDialog(context, "No");
+		require(awaitResult(server, refused, 100).contains("the king said no"), "a no was not reported");
+		require(kingCount(server, Items.GOLD_INGOT) == 10 && villagerCount(server, v, Items.GOLD_INGOT) == 0, "items moved after a no");
+		CompletableFuture<String> allowed = toolAsync(server, v, "take_from_king", "{\"item\":\"minecraft:gold_ingot\",\"count\":4}");
+		answerDialog(context, "Yes");
+		String took = awaitResult(server, allowed, 100);
+		require(took.startsWith("ok: took 4"), "take_from_king said " + took);
+		require(kingCount(server, Items.GOLD_INGOT) == 6 && villagerCount(server, v, Items.GOLD_INGOT) == 4, "gold did not move exactly 4");
+		CompletableFuture<String> tooMany = toolAsync(server, v, "take_from_king", "{\"item\":\"minecraft:gold_ingot\",\"count\":50}");
+		answerDialog(context, "Yes");
+		require(awaitResult(server, tooMany, 100).startsWith("failed: the king only has 6"), "over-asking was not refused");
+		// equip
+		server.runOnServer(srv -> {
+			VillagerInventories.get(v).addItem(new ItemStack(Items.IRON_SWORD, 1));
+			VillagerInventories.get(v).addItem(new ItemStack(Items.IRON_HELMET, 1));
+		});
+		require(tool(server, v, "equip", "{\"item\":\"minecraft:iron_sword\"}", 50).startsWith("ok: equipped"), "equip sword failed");
+		require(tool(server, v, "equip", "{\"item\":\"minecraft:iron_helmet\"}", 50).startsWith("ok: equipped"), "equip helmet failed");
+		require(server.computeOnServer(srv -> v.getMainHandItem().is(Items.IRON_SWORD)), "sword is not in hand");
+		require(server.computeOnServer(srv -> v.getItemBySlot(net.minecraft.world.entity.EquipmentSlot.HEAD).is(Items.IRON_HELMET)), "helmet is not worn");
+		require(villagerCount(server, v, Items.IRON_SWORD) == 0, "equipped sword is still in the inventory too");
+		// eat
+		server.runOnServer(srv -> {
+			VillagerInventories.get(v).addItem(new ItemStack(Items.APPLE, 2));
+			v.setHealth(10);
+		});
+		require(tool(server, v, "eat", "{}", 50).startsWith("ok: ate"), "eat failed");
+		require(server.computeOnServer(srv -> v.getHealth()) > 10, "eating did not heal");
+		require(villagerCount(server, v, Items.APPLE) == 1, "an apple was not used up");
+		require(tool(server, v, "use_item", "{\"item\":\"minecraft:diamond_pickaxe\"}", 50).contains("don't have"), "use_item of an unheld item");
+	}
+
+	private void containerTools(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		server.runCommand("setblock 3 100 0 minecraft:chest");
+		server.runCommand("item replace block 3 100 0 container.0 with minecraft:diamond 5");
+		Villager v = spawnVillager(server, 0, 100, 0);
+		String open = tool(server, v, "open_container", "{\"x\":3,\"y\":100,\"z\":0}", 600);
+		require(open.startsWith("ok:") && open.contains("diamond") && open.contains("5"), "open_container said " + open);
+		String took = tool(server, v, "take_out", "{\"x\":3,\"y\":100,\"z\":0,\"item\":\"minecraft:diamond\",\"count\":3}", 600);
+		require(took.startsWith("ok: took 3"), "take_out said " + took);
+		require(villagerCount(server, v, Items.DIAMOND) == 3, "diamonds did not reach the villager");
+		require(tool(server, v, "take_out", "{\"x\":3,\"y\":100,\"z\":0,\"item\":\"minecraft:diamond\",\"count\":9}", 200)
+				.contains("only holds 2"), "taking more than the chest holds was not refused");
+		String put = tool(server, v, "put_in", "{\"x\":3,\"y\":100,\"z\":0,\"item\":\"minecraft:diamond\",\"count\":2}", 600);
+		require(put.startsWith("ok: put 2"), "put_in said " + put);
+		require(villagerCount(server, v, Items.DIAMOND) == 1, "put_in did not use up the diamonds");
+		require(tool(server, v, "put_in", "{\"x\":3,\"y\":100,\"z\":0,\"item\":\"minecraft:diamond\",\"count\":5}", 200)
+				.contains("only have 1"), "putting in more than carried was not refused");
+		require(tool(server, v, "open_container", "{\"x\":4,\"y\":100,\"z\":0}", 200).contains("no container"),
+				"opening thin air should fail");
+		String again = tool(server, v, "open_container", "{\"x\":3,\"y\":100,\"z\":0}", 200);
+		require(again.contains("diamond") && again.contains("4"), "chest should now hold 4 diamonds: " + again);
+		server.runCommand("gamemode adventure @p");
+		String blocked = tool(server, v, "take_out", "{\"x\":3,\"y\":100,\"z\":0,\"item\":\"minecraft:diamond\",\"count\":1}", 200);
+		server.runCommand("gamemode creative @p");
+		require(blocked.startsWith("failed") && blocked.contains("protected"), "protection did not apply to containers: " + blocked);
+	}
+
+	private void craftTools(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager v = spawnVillager(server, 0, 100, 0);
+		// A 2x2 recipe needs no table.
+		server.runOnServer(srv -> VillagerInventories.get(v).addItem(new ItemStack(Items.OAK_PLANKS, 2)));
+		String sticks = tool(server, v, "craft", "{\"item\":\"minecraft:stick\",\"count\":4}", 100);
+		require(sticks.startsWith("ok: crafted 4"), "craft sticks said " + sticks);
+		require(villagerCount(server, v, Items.STICK) == 4 && villagerCount(server, v, Items.OAK_PLANKS) == 0, "sticks were not made from the planks");
+		require(tool(server, v, "craft", "{\"item\":\"minecraft:diamond_sword\",\"count\":1}", 100).startsWith("failed"), "crafted without materials");
+		// A 3x3 recipe needs a crafting table.
+		server.runOnServer(srv -> VillagerInventories.get(v).addItem(new ItemStack(Items.IRON_INGOT, 3)));
+		String noTable = tool(server, v, "craft", "{\"item\":\"minecraft:iron_pickaxe\",\"count\":1}", 100);
+		require(noTable.startsWith("failed") && noTable.contains("crafting table"), "expected a crafting-table failure, got " + noTable);
+		server.runCommand("setblock 3 100 0 minecraft:crafting_table");
+		String pick = tool(server, v, "craft", "{\"item\":\"minecraft:iron_pickaxe\",\"count\":1}", 600);
+		require(pick.startsWith("ok: crafted 1"), "craft pickaxe said " + pick);
+		require(villagerCount(server, v, Items.IRON_PICKAXE) == 1, "no pickaxe in the inventory");
+		require(villagerCount(server, v, Items.IRON_INGOT) == 0 && villagerCount(server, v, Items.STICK) == 2, "ingredients were not used correctly");
+	}
+
+	private void smeltTool(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager v = spawnVillager(server, 0, 100, 0);
+		server.runOnServer(srv -> {
+			VillagerInventories.get(v).addItem(new ItemStack(Items.RAW_IRON, 2));
+			VillagerInventories.get(v).addItem(new ItemStack(Items.COAL, 4));
+		});
+		String none = tool(server, v, "smelt", "{\"item\":\"minecraft:raw_iron\",\"count\":2}", 100);
+		require(none.startsWith("failed") && none.contains("furnace"), "expected a no-furnace failure, got " + none);
+		server.runCommand("setblock -3 100 0 minecraft:furnace");
+		String result = tool(server, v, "smelt", "{\"item\":\"minecraft:raw_iron\",\"count\":2}", 2400);
+		require(result.startsWith("ok: smelted"), "smelt said " + result);
+		require(villagerCount(server, v, Items.IRON_INGOT) == 2 && villagerCount(server, v, Items.RAW_IRON) == 0, "iron was not smelted into ingots");
+		require(villagerCount(server, v, Items.COAL) >= 3, "too much coal was used for 2 items");
+		require(tool(server, v, "smelt", "{\"item\":\"minecraft:diamond\",\"count\":1}", 100).startsWith("failed"), "smelting a diamond should fail");
+	}
+
+	private void brewTool(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager v = spawnVillager(server, 0, 100, 0);
+		server.runCommand("setblock 0 100 -3 minecraft:brewing_stand");
+		server.runOnServer(srv -> {
+			VillagerInventories.get(v).addItem(net.minecraft.world.item.alchemy.PotionContents.createItemStack(Items.POTION,
+					net.minecraft.world.item.alchemy.Potions.WATER));
+			VillagerInventories.get(v).addItem(net.minecraft.world.item.alchemy.PotionContents.createItemStack(Items.POTION,
+					net.minecraft.world.item.alchemy.Potions.WATER));
+			VillagerInventories.get(v).addItem(new ItemStack(Items.NETHER_WART, 1));
+			VillagerInventories.get(v).addItem(new ItemStack(Items.BLAZE_POWDER, 1));
+		});
+		String result = tool(server, v, "brew", "{\"item\":\"minecraft:nether_wart\"}", 1800);
+		require(result.startsWith("ok: brewed 2") && result.toLowerCase().contains("awkward"), "brew said " + result);
+		require(villagerCount(server, v, Items.NETHER_WART) == 0 && villagerCount(server, v, Items.BLAZE_POWDER) == 0, "ingredient or fuel not used");
+		require(tool(server, v, "brew", "{\"item\":\"minecraft:nether_wart\"}", 100).startsWith("failed"), "brewing with nothing should fail");
+	}
+
+	private void chopTree(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		server.runCommand("fill 4 100 0 4 103 0 minecraft:oak_log");
+		server.runCommand("setblock 4 104 0 minecraft:oak_leaves");
+		Villager v = spawnVillager(server, 0, 100, 0);
+		String result = tool(server, v, "chop_tree", "{\"x\":4,\"y\":100,\"z\":0}", 3000);
+		require(result.startsWith("ok: chopped 4"), "chop_tree said " + result);
+		require(server.computeOnServer(srv -> srv.overworld().getBlockState(new BlockPos(4, 103, 0)).isAir()), "the top log is still there");
+		require(tool(server, v, "chop_tree", "{\"x\":9,\"y\":100,\"z\":0}", 100).contains("no log"), "chopping thin air should fail");
+	}
+
+	private void farming(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		server.runCommand("setblock 3 99 0 minecraft:dirt");
+		Villager v = spawnVillager(server, 0, 100, 0);
+		require(tool(server, v, "till", "{\"x\":3,\"y\":99,\"z\":0}", 100).contains("hoe"), "tilling without a hoe should fail");
+		server.runOnServer(srv -> {
+			VillagerInventories.get(v).addItem(new ItemStack(Items.IRON_HOE, 1));
+			VillagerInventories.get(v).addItem(new ItemStack(Items.WHEAT_SEEDS, 2));
+		});
+		String tilled = tool(server, v, "till", "{\"x\":3,\"y\":99,\"z\":0}", 400);
+		require(tilled.startsWith("ok: tilled"), "till said " + tilled);
+		require(server.computeOnServer(srv -> srv.overworld().getBlockState(new BlockPos(3, 99, 0)).is(Blocks.FARMLAND)), "no farmland");
+		String planted = tool(server, v, "plant", "{\"item\":\"minecraft:wheat_seeds\",\"x\":3,\"y\":100,\"z\":0}", 400);
+		require(planted.startsWith("ok: placed"), "plant said " + planted);
+		require(server.computeOnServer(srv -> srv.overworld().getBlockState(new BlockPos(3, 100, 0)).is(Blocks.WHEAT)), "no wheat");
+		require(tool(server, v, "harvest", "{\"x\":3,\"y\":100,\"z\":0}", 100).contains("not ripe"), "a young crop was harvested");
+		server.runCommand("setblock 3 100 0 minecraft:wheat[age=7]");
+		String harvested = tool(server, v, "harvest", "{\"x\":3,\"y\":100,\"z\":0}", 800);
+		require(harvested.contains("replanted"), "harvest said " + harvested);
+		require(server.computeOnServer(srv -> srv.overworld().getBlockState(new BlockPos(3, 100, 0)).is(Blocks.WHEAT)), "crop was not replanted");
+	}
+
+	private void animals(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager v = spawnVillager(server, 0, 100, 0);
+		// shear
+		server.runCommand("summon minecraft:sheep 2 100 1 {NoAI:1b}");
+		require(tool(server, v, "shear", "{}", 100).contains("shears"), "shearing without shears should fail");
+		server.runOnServer(srv -> VillagerInventories.get(v).addItem(new ItemStack(Items.SHEARS, 1)));
+		String sheared = tool(server, v, "shear", "{}", 600);
+		require(sheared.startsWith("ok: sheared"), "shear said " + sheared);
+		require(server.computeOnServer(srv -> srv.overworld().getEntitiesOfClass(
+				net.minecraft.world.entity.animal.sheep.Sheep.class, new AABB(-8, 95, -8, 8, 110, 8)).get(0).isSheared()), "the sheep was not sheared");
+		server.runCommand("kill @e[type=minecraft:sheep]");
+		// milk
+		server.runCommand("summon minecraft:cow 2 100 1 {NoAI:1b}");
+		server.runOnServer(srv -> VillagerInventories.get(v).addItem(new ItemStack(Items.BUCKET, 1)));
+		String milked = tool(server, v, "milk", "{}", 600);
+		require(milked.startsWith("ok: milked"), "milk said " + milked);
+		require(villagerCount(server, v, Items.MILK_BUCKET) == 1 && villagerCount(server, v, Items.BUCKET) == 0, "the bucket was not filled");
+		server.runCommand("kill @e[type=minecraft:cow]");
+		// breed
+		server.runCommand("summon minecraft:cow 2 100 1 {NoAI:1b}");
+		server.runCommand("summon minecraft:cow 3 100 3 {NoAI:1b}");
+		server.runOnServer(srv -> VillagerInventories.get(v).addItem(new ItemStack(Items.WHEAT, 4)));
+		String bred = tool(server, v, "breed", "{}", 900);
+		require(bred.contains("fed 2"), "breed said " + bred);
+		require(2 == server.computeOnServer(srv -> srv.overworld().getEntitiesOfClass(net.minecraft.world.entity.animal.Animal.class,
+				new AABB(-8, 95, -8, 8, 110, 8), a -> a.isInLove()).size()), "both cows should be in love");
+		server.runCommand("kill @e[type=minecraft:cow]");
+		// tame
+		server.runCommand("summon minecraft:wolf 2 100 1 {NoAI:1b}");
+		server.runOnServer(srv -> VillagerInventories.get(v).addItem(new ItemStack(Items.BONE, 32)));
+		String tamed = tool(server, v, "tame", "{}", 1200);
+		require(tamed.startsWith("ok: tamed"), "tame said " + tamed);
+		require(tool(server, v, "shear", "{}", 100).startsWith("failed"), "no sheep is left to shear");
+	}
+
+	private void fishing(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		server.runCommand("fill 2 100 2 4 100 4 minecraft:water");
+		Villager v = spawnVillager(server, 0, 100, 0);
+		require(tool(server, v, "fish", "{\"seconds\":20}", 100).contains("rod"), "fishing without a rod should fail");
+		server.runOnServer(srv -> VillagerInventories.get(v).addItem(new ItemStack(Items.FISHING_ROD, 1)));
+		String result = tool(server, v, "fish", "{\"seconds\":20}", 900);
+		require(result.startsWith("ok: caught 1"), "fish said " + result);
+		require(villagerCount(server, v, Items.FISHING_ROD) == 1, "the rod should survive one catch");
+	}
+
+	private static int mobId(TestServerContext server, String type, double x, double y, double z) {
+		server.runCommand("difficulty easy"); // hostile mobs vanish on peaceful
+		server.runCommand("summon " + type + " " + x + " " + y + " " + z + " {NoAI:1b,PersistenceRequired:1b}");
+		return server.computeOnServer(srv -> {
+			List<net.minecraft.world.entity.Mob> found = srv.overworld().getEntitiesOfClass(net.minecraft.world.entity.Mob.class,
+					new AABB(x - 1, y - 1, z - 1, x + 1, y + 2, z + 1), m -> !(m instanceof Villager));
+			require(!found.isEmpty(), type + " did not spawn");
+			return found.get(0).getId();
+		});
+	}
+
+	private static float healthOf(TestServerContext server, int id) {
+		return server.computeOnServer(srv -> srv.overworld().getEntity(id) instanceof net.minecraft.world.entity.LivingEntity l
+				? l.getHealth() : -1f);
+	}
+
+	private void combatAttack(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager v = spawnVillager(server, 0, 100, 0);
+		server.runOnServer(srv -> v.setItemSlot(net.minecraft.world.entity.EquipmentSlot.MAINHAND, new ItemStack(Items.IRON_SWORD)));
+		int husk = mobId(server, "minecraft:husk", 3, 100, 0);
+		String result = tool(server, v, "attack", "{\"entity_id\":" + husk + "}", 1500);
+		require(result.startsWith("ok: killed"), "attack said " + result);
+		require(healthOf(server, husk) <= 0f || server.computeOnServer(srv -> srv.overworld().getEntity(husk) == null
+				|| !srv.overworld().getEntity(husk).isAlive()), "the husk is still alive");
+		require(tool(server, v, "attack", "{\"entity_id\":99999}", 100).startsWith("failed"), "attacking a missing id should fail");
+	}
+
+	private void combatNeverHurtsPlayersOrPets(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager v = spawnVillager(server, 0, 100, 0);
+		server.runOnServer(srv -> v.setItemSlot(net.minecraft.world.entity.EquipmentSlot.MAINHAND, new ItemStack(Items.IRON_SWORD)));
+		int wolf = mobId(server, "minecraft:wolf", 2, 100, 0);
+		server.runOnServer(srv -> ((net.minecraft.world.entity.TamableAnimal) srv.overworld().getEntity(wolf))
+				.tame(srv.getPlayerList().getPlayers().get(0)));
+		int king = server.computeOnServer(srv -> srv.getPlayerList().getPlayers().get(0).getId());
+		float wolfHealth = healthOf(server, wolf);
+		String petResult = tool(server, v, "attack", "{\"entity_id\":" + wolf + "}", 200);
+		require(petResult.startsWith("failed") && petResult.contains("won't hurt"), "attacking a pet was not refused: " + petResult);
+		String playerResult = tool(server, v, "attack", "{\"entity_id\":" + king + "}", 200);
+		require(playerResult.startsWith("failed") && playerResult.contains("won't hurt"), "attacking the king was not refused: " + playerResult);
+		server.runOnServer(srv -> VillagerInventories.get(v).addItem(new ItemStack(Items.BOW)));
+		server.runOnServer(srv -> VillagerInventories.get(v).addItem(new ItemStack(Items.ARROW, 4)));
+		String shot = tool(server, v, "shoot", "{\"entity_id\":" + wolf + "}", 200);
+		require(shot.startsWith("failed") && shot.contains("won't hurt"), "shooting a pet was not refused: " + shot);
+		require(healthOf(server, wolf) == wolfHealth, "the pet was hurt");
+		require(villagerCount(server, v, Items.ARROW) == 4, "an arrow was spent on a refused shot");
+	}
+
+	private void combatShoot(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager v = spawnVillager(server, 0, 100, 0);
+		int husk = mobId(server, "minecraft:husk", 8, 100, 0);
+		require(tool(server, v, "shoot", "{\"entity_id\":" + husk + "}", 100).contains("bow"), "shooting without a bow should fail");
+		server.runOnServer(srv -> {
+			VillagerInventories.get(v).addItem(new ItemStack(Items.BOW));
+			VillagerInventories.get(v).addItem(new ItemStack(Items.ARROW, 4));
+		});
+		float before = healthOf(server, husk);
+		String shot = tool(server, v, "shoot", "{\"entity_id\":" + husk + "}", 200);
+		require(shot.startsWith("ok: shot"), "shoot said " + shot);
+		require(villagerCount(server, v, Items.ARROW) == 3, "the arrow was not used up");
+		server.waitFor(srv -> healthOf(server, husk) < before, 200);
+		require(healthOf(server, husk) < before, "the arrow never hit the husk");
+	}
+
+	private void combatGuardAndFlee(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager v = spawnVillager(server, 0, 100, 0);
+		server.runOnServer(srv -> v.setItemSlot(net.minecraft.world.entity.EquipmentSlot.MAINHAND, new ItemStack(Items.IRON_SWORD)));
+		int cat = mobId(server, "minecraft:cat", 4, 100, 2);
+		server.runOnServer(srv -> ((net.minecraft.world.entity.TamableAnimal) srv.overworld().getEntity(cat))
+				.tame(srv.getPlayerList().getPlayers().get(0)));
+		int husk = mobId(server, "minecraft:husk", 5, 100, 0);
+		String started = tool(server, v, "guard", "{}", 100);
+		require(started.startsWith("ok"), "guard said " + started);
+		server.waitFor(srv -> healthOf(server, husk) <= 0f, 1500);
+		require(healthOf(server, husk) <= 0f, "the guard did not kill the nearby husk");
+		require(server.computeOnServer(srv -> ((net.minecraft.world.entity.LivingEntity) srv.overworld().getEntity(cat)).getHealth()
+				== ((net.minecraft.world.entity.LivingEntity) srv.overworld().getEntity(cat)).getMaxHealth()), "the guard hurt a pet");
+		require(tool(server, v, "stop", "{}", 50).startsWith("ok"), "stop failed");
+		// flee: runs away from a hostile creature.
+		server.runCommand("kill @e[type=minecraft:cat]");
+		int threat = mobId(server, "minecraft:husk", 2, 100, 0);
+		double before = server.computeOnServer(srv -> v.distanceTo(srv.overworld().getEntity(threat)));
+		String fled = tool(server, v, "flee", "{\"seconds\":4}", 400);
+		require(fled.startsWith("ok: ran away"), "flee said " + fled);
+		double after = server.computeOnServer(srv -> v.distanceTo(srv.overworld().getEntity(threat)));
+		require(after > before + 5, "the villager did not get away: " + before + " -> " + after);
+	}
+
+	/** Lets the server run for a number of ticks. */
+	private static void waitTicks(TestServerContext server, int ticks) {
+		int start = server.computeOnServer(srv -> srv.getTickCount());
+		server.waitFor(srv -> srv.getTickCount() - start >= ticks, ticks + 40);
+	}
+
+	private void sitAndSleep(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager v = spawnVillager(server, 0, 100, 0);
+		// sit: stays put while an ordinary villager would wander
+		require(tool(server, v, "sit", "{}", 50).startsWith("ok"), "sit failed");
+		Vec3 sat = server.computeOnServer(srv -> v.position());
+		waitTicks(server, 80);
+		require(server.computeOnServer(srv -> v.position().distanceTo(sat)) < 0.5, "the villager moved while sitting");
+		require(tool(server, v, "stop", "{}", 20).startsWith("ok"), "stop failed");
+		// sleep: not in daytime, yes at night, and it wakes at dawn
+		server.runCommand("setblock 3 100 0 minecraft:red_bed[facing=east,part=foot]");
+		server.runCommand("setblock 4 100 0 minecraft:red_bed[facing=east,part=head]");
+		server.runCommand("time set noon");
+		waitTicks(server, 5);
+		String day = tool(server, v, "sleep", "{\"x\":3,\"y\":100,\"z\":0}", 100);
+		require(day.startsWith("failed") && day.contains("night"), "sleeping by day should fail: " + day);
+		server.runCommand("time set midnight");
+		server.waitFor(srv -> srv.overworld().isDarkOutside(), 60);
+		String night = tool(server, v, "sleep", "{\"x\":3,\"y\":100,\"z\":0}", 800);
+		require(night.startsWith("ok"), "sleep said " + night);
+		require(server.computeOnServer(srv -> v.isSleeping()), "the villager is not asleep");
+		waitTicks(server, 40);
+		require(server.computeOnServer(srv -> v.isSleeping()), "the villager woke up too early");
+		server.runCommand("time set noon");
+		server.waitFor(srv -> !v.isSleeping(), 200);
+		require(!server.computeOnServer(srv -> v.isSleeping()), "the villager did not wake at dawn");
+		require(tool(server, v, "sleep", "{\"x\":9,\"y\":100,\"z\":9}", 100).startsWith("failed"), "sleeping with no bed should fail");
+	}
+
+	private static String scriptArgs(String script) {
+		com.google.gson.JsonObject o = new com.google.gson.JsonObject();
+		o.addProperty("script", script);
+		return o.toString();
+	}
+
+	private void scripts(ClientGameTestContext context, TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		server.runCommand("setblock 3 100 0 minecraft:stone");
+		server.runCommand("setblock 4 100 0 minecraft:stone");
+		server.runCommand("setblock 5 100 0 minecraft:stone");
+		Villager v = spawnVillager(server, 0, 100, 0);
+		ollama.script(reply("unused"));
+		// Three mining steps run with no model call at all.
+		String three = tool(server, v, "run_script", scriptArgs("{\"steps\":["
+				+ "{\"tool\":\"mine_block\",\"args\":{\"x\":3,\"y\":100,\"z\":0}},"
+				+ "{\"tool\":\"mine_block\",\"args\":{\"x\":4,\"y\":100,\"z\":0}},"
+				+ "{\"tool\":\"mine_block\",\"args\":{\"x\":5,\"y\":100,\"z\":0}}]}"), 3000);
+		require(three.equals("ok: ran 3 steps"), "script said " + three);
+		for (int x = 3; x <= 5; x++) {
+			int px = x;
+			require(server.computeOnServer(srv -> srv.overworld().getBlockState(new BlockPos(px, 100, 0)).isAir()), "block " + x + " was not mined");
+		}
+		require(ollama.requests.isEmpty(), "the script called the model");
+		// A failing step stops the run and names the step.
+		server.runCommand("setblock 3 100 0 minecraft:stone");
+		server.runCommand("setblock 4 100 0 minecraft:stone");
+		String failing = tool(server, v, "run_script", scriptArgs("{\"steps\":["
+				+ "{\"tool\":\"mine_block\",\"args\":{\"x\":3,\"y\":100,\"z\":0}},"
+				+ "{\"tool\":\"mine_block\",\"args\":{\"x\":3,\"y\":100,\"z\":6}},"
+				+ "{\"tool\":\"mine_block\",\"args\":{\"x\":4,\"y\":100,\"z\":0}}]}"), 3000);
+		require(failing.startsWith("failed: step 2 mine_block") && failing.contains("no block"), "failing script said " + failing);
+		require(server.computeOnServer(srv -> srv.overworld().getBlockState(new BlockPos(4, 100, 0)).is(Blocks.STONE)), "a step ran after the failure");
+		// A script the parser rejects never starts.
+		require(tool(server, v, "run_script", scriptArgs("{\"steps\":[{\"tool\":\"fly\"}]}"), 50).startsWith("invalid:"), "unknown tool accepted");
+		require(tool(server, v, "run_script", scriptArgs("{\"steps\":[{\"tool\":\"run_script\",\"args\":{}}]}"), 50).startsWith("invalid:"), "nested script accepted");
+		// Conditions read the real world.
+		server.runOnServer(srv -> VillagerInventories.get(v).addItem(new ItemStack(Items.OAK_LOG, 5)));
+		String conditional = tool(server, v, "run_script", scriptArgs("{\"steps\":["
+				+ "{\"if\":{\"have\":{\"item\":\"minecraft:oak_log\",\"count\":5}},\"then\":[{\"tool\":\"drop\",\"args\":{\"item\":\"minecraft:oak_log\",\"count\":5}}],\"else\":[{\"tool\":\"look_around\"}]},"
+				+ "{\"if\":{\"has_block\":{\"x\":4,\"y\":100,\"z\":0}},\"then\":[{\"tool\":\"mine_block\",\"args\":{\"x\":4,\"y\":100,\"z\":0}}]}]}"), 3000);
+		require(conditional.equals("ok: ran 2 steps"), "conditional script said " + conditional);
+		require(villagerCount(server, v, Items.OAK_LOG) == 0, "the have-condition did not see the logs");
+		require(server.computeOnServer(srv -> srv.overworld().getBlockState(new BlockPos(4, 100, 0)).isAir()), "the has_block condition did not see the stone");
+		// The step limit applies.
+		String limited = tool(server, v, VillagingConfigWithScriptSteps(3), "run_script",
+				scriptArgs("{\"steps\":[{\"repeat\":10,\"steps\":[{\"tool\":\"look_around\"}]}]}"), 600);
+		require(limited.startsWith("stopped") && limited.contains("limit of 3"), "limit script said " + limited);
+		// stop ends a running script.
+		CompletableFuture<String> long1 = toolAsync(server, v, "run_script", scriptArgs("{\"steps\":[{\"repeat\":20,\"steps\":["
+				+ "{\"tool\":\"go_to\",\"args\":{\"x\":12,\"y\":100,\"z\":0}},{\"tool\":\"go_to\",\"args\":{\"x\":-12,\"y\":100,\"z\":0}}]}]}"));
+		waitTicks(server, 40);
+		require(!long1.isDone(), "the long script finished too early");
+		require(tool(server, v, "stop", "{}", 50).startsWith("ok"), "stop failed");
+		String stopped = awaitResult(server, long1, 200);
+		require(stopped.startsWith("stopped") || stopped.startsWith("failed"), "the script did not end after stop: " + stopped);
+		waitTicks(server, 20);
+		require(!server.computeOnServer(srv -> ActionManager.isControlled(v)), "the villager is still under script control after stop");
+	}
+
+	private static VillagingConfig VillagingConfigWithScriptSteps(int steps) {
+		VillagingConfig d = VillagingConfig.defaults();
+		return new VillagingConfig(d.provider(), d.apiKey(), d.model(), d.cloudUrl(), d.ollamaUrl(), d.ollamaModel(),
+				d.geminiModel(), d.geminiUrl(), d.maxSteps(), d.callsPerMinute(), d.actionRange(), d.respectProtection(),
+				d.allowBreakBedrock(), steps, d.maxScriptSeconds(), d.maxScriptDepth());
+	}
+
+	private void scriptRiskyStepAsks(ClientGameTestContext context, TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager v = spawnVillager(server, 0, 100, 0);
+		server.runOnServer(srv -> {
+			v.setNoAi(true);
+			VillagerInventories.get(v).addItem(new ItemStack(Items.TNT, 2));
+		});
+		CompletableFuture<String> run = toolAsync(server, v, "run_script", scriptArgs("{\"steps\":["
+				+ "{\"tool\":\"place_block\",\"args\":{\"item\":\"minecraft:tnt\",\"x\":3,\"y\":100,\"z\":1}}]}"));
+		answerDialog(context, "No");
+		String result = awaitResult(server, run, 300);
+		require(result.startsWith("failed: step 1 place_block") && result.contains("the king said no"), "risky script step said " + result);
+		require(server.computeOnServer(srv -> srv.overworld().getBlockState(new BlockPos(3, 100, 1)).isAir()), "TNT was placed without a yes");
+	}
+
+	private void commanderRelay(ClientGameTestContext context, TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager alma = spawnVillager(server, 0, 100, 0);
+		Villager bram = spawnVillager(server, 3, 100, 0);
+		server.runOnServer(srv -> {
+			VillagerBrains.set(alma, VillagerBrain.DEFAULT.makeSmart("Alma"));
+			VillagerBrains.set(bram, VillagerBrain.DEFAULT.makeSmart("Bram"));
+		});
+		String order = "{\"villager_name\":\"Bram\",\"order\":\"gather some wood\"}";
+		// Only commanders may relay.
+		require(tool(server, alma, "relay_order", order, 100).contains("only a commander"), "a plain villager relayed an order");
+		server.runOnServer(srv -> VillagerBrains.set(alma, VillagerBrains.get(alma).withCommander(true)));
+		require(tool(server, alma, "relay_order", "{\"villager_name\":\"Zed\",\"order\":\"x\"}", 100).contains("can't find"), "unknown villager accepted");
+		// The king says no: nothing reaches Bram.
+		CompletableFuture<String> refused = toolAsync(server, alma, "relay_order", order);
+		answerDialog(context, "No");
+		require(awaitResult(server, refused, 100).contains("the king said no"), "a no was not reported");
+		waitTicks(server, 20);
+		require(server.computeOnServer(srv -> VillagerBrains.get(bram).memory().isEmpty()), "Bram heard the order after a no");
+		// The king says yes: Bram receives it as a command and answers through the normal model path.
+		ollama.script(reply("On it, my king."));
+		CompletableFuture<String> approved = toolAsync(server, alma, "relay_order", order);
+		answerDialog(context, "Yes");
+		String result = awaitResult(server, approved, 100);
+		require(result.startsWith("ok: passed the order to Bram"), "relay said " + result);
+		server.waitFor(srv -> VillagerBrains.get(bram).memory().size() >= 2, 600);
+		VillagerBrain heard = server.computeOnServer(srv -> VillagerBrains.get(bram));
+		require(heard.memory().contains("king: gather some wood"), "Bram's memory lacks the order: " + heard.memory());
+		require(ollama.requests.size() >= 1 && ollama.requests.get(0).contains("gather some wood"), "the model never saw the relayed order");
+	}
+
+	/** One typed command, one model call that writes a script, and a finished chest at the end. */
+	private void getLogsAndMakeAChest(ClientGameTestContext context, TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		server.runCommand("fill 4 100 0 4 103 0 minecraft:oak_log");
+		server.runCommand("setblock -3 100 0 minecraft:crafting_table");
+		Villager v = spawnVillager(server, 0, 100, 0);
+		server.runOnServer(srv -> VillagerBrains.set(v, VillagerBrain.DEFAULT.makeSmart("Alma")));
+		int id = server.computeOnServer(srv -> v.getId());
+		String script = "{\"steps\":["
+				+ "{\"tool\":\"chop_tree\",\"args\":{\"x\":4,\"y\":100,\"z\":0}},"
+				+ "{\"tool\":\"pick_up\",\"args\":{\"item\":\"minecraft:oak_log\"}},"
+				+ "{\"tool\":\"craft\",\"args\":{\"item\":\"minecraft:oak_planks\",\"count\":8}},"
+				+ "{\"tool\":\"craft\",\"args\":{\"item\":\"minecraft:chest\",\"count\":1}},"
+				+ "{\"tool\":\"place_block\",\"args\":{\"item\":\"minecraft:chest\",\"x\":3,\"y\":100,\"z\":1}}]}";
+		com.google.gson.JsonObject scriptArgs = new com.google.gson.JsonObject();
+		scriptArgs.addProperty("script", script);
+		ollama.script(toolCall("run_script", scriptArgs.toString()), reply("Your chest is ready, my king."));
+		context.runOnClient(mc -> ClientPlayNetworking.send(new CommandPayload(id, "get some logs and make me a chest")));
+		server.waitFor(srv -> srv.overworld().getBlockState(new BlockPos(3, 100, 1)).is(Blocks.CHEST), 6000);
+		context.takeScreenshot("villaging-chest-built");
+		require(server.computeOnServer(srv -> srv.overworld().getBlockState(new BlockPos(3, 100, 1)).is(Blocks.CHEST)), "no chest was built");
+		server.waitFor(srv -> ollama.requests.size() >= 2, 600);
+		require(ollama.requests.size() == 2, "expected exactly 2 model calls (the order, then the result), saw " + ollama.requests.size());
+		require(ollama.requests.get(1).contains("ok: ran 5 steps"), "the model was not told the script finished: " + ollama.requests.get(1));
+		require(server.computeOnServer(srv -> v.getCustomName() != null), "the villager lost its name");
+	}
+
+	private static ItemStack named(net.minecraft.world.item.Item item, int count, String name) {
+		ItemStack stack = new ItemStack(item, count);
+		stack.set(net.minecraft.core.component.DataComponents.CUSTOM_NAME, net.minecraft.network.chat.Component.literal(name));
+		return stack;
+	}
+
+	private static boolean hasName(ItemStack stack, String name) {
+		net.minecraft.network.chat.Component n = stack.get(net.minecraft.core.component.DataComponents.CUSTOM_NAME);
+		return n != null && n.getString().equals(name);
+	}
+
+	/** A closed question (the call was cancelled) must not be answerable later. */
+	private void reviewCancelledConfirmation(ClientGameTestContext context, TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		server.runCommand("clear @p");
+		server.runCommand("give @p minecraft:gold_ingot 10");
+		Villager v = spawnVillager(server, 0, 100, 0);
+		CompletableFuture<String> take = toolAsync(server, v, "take_from_king", "{\"item\":\"minecraft:gold_ingot\",\"count\":10}");
+		context.waitForScreen(AskScreen.class);
+		server.runOnServer(srv -> take.cancel(true)); // a newer command cancels the old call
+		waitTicks(server, 10);
+		context.runOnClient(mc -> ((AskScreen) mc.gui.screen()).choose("Yes")); // the stale dialog is still on screen
+		waitTicks(server, 20);
+		require(kingCount(server, Items.GOLD_INGOT) == 10 && villagerCount(server, v, Items.GOLD_INGOT) == 0,
+				"a cancelled confirmation still took the items");
+	}
+
+	/** Once approved, a risky act must still be stoppable. */
+	private void reviewApprovedActCanBeCancelled(ClientGameTestContext context, TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		server.runCommand("fill 2 100 0 6 103 3 minecraft:stone");
+		Villager v = spawnVillager(server, 0, 100, 4);
+		CompletableFuture<String> run = toolAsync(server, v, "break_area", "{\"x1\":2,\"y1\":100,\"z1\":0,\"x2\":6,\"y2\":103,\"z2\":3}");
+		answerDialog(context, "Yes");
+		waitTicks(server, 40);
+		require(server.computeOnServer(srv -> ActionManager.isControlled(v)), "the approved act never started");
+		server.runOnServer(srv -> run.cancel(true));
+		waitTicks(server, 20);
+		require(!server.computeOnServer(srv -> ActionManager.isControlled(v)), "the villager kept working after the call was cancelled");
+	}
+
+	/** Many small jobs add up to mass destruction and then ask. */
+	private void reviewDestructionTotalAsks(ClientGameTestContext context, TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager v = spawnVillager(server, 0, 100, 0);
+		MinecraftActionExecutor exec = server.computeOnServer(srv -> new MinecraftActionExecutor(srv, v, playerId(server), VillagingConfig.defaults()));
+		String box = "{\"x1\":2,\"y1\":110,\"z1\":2,\"x2\":5,\"y2\":113,\"z2\":5}"; // 4x4x4 = 64 blocks of air each time
+		for (int i = 0; i < 2; i++) {
+			CompletableFuture<String> call = server.computeOnServer(srv -> exec.execute(new ToolCall("t", "break_area",
+					com.google.gson.JsonParser.parseString(box).getAsJsonObject())));
+			if (i == 0) {
+				require(awaitResult(server, call, 100).startsWith("ok"), "the first 64 blocks should not need a question");
+			} else {
+				answerDialog(context, "No");
+				require(awaitResult(server, call, 100).contains("the king said no"), "the running total did not trigger the question");
+			}
+		}
+	}
+
+	/** Names, enchantments and contents survive being handed over; and no oversized stacks. */
+	private void reviewItemDataSurvives(ClientGameTestContext context, TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		server.runCommand("clear @p");
+		server.runCommand("setblock 3 100 0 minecraft:chest");
+		Villager v = spawnVillager(server, 0, 100, 0);
+		server.runOnServer(srv -> VillagerInventories.get(v).addItem(named(Items.DIAMOND_SWORD, 1, "Excalibur")));
+		require(tool(server, v, "put_in", "{\"x\":3,\"y\":100,\"z\":0,\"item\":\"minecraft:diamond_sword\",\"count\":1}", 600).startsWith("ok: put 1"), "put_in failed");
+		require(server.computeOnServer(srv -> hasName(((net.minecraft.world.Container) srv.overworld().getBlockEntity(new BlockPos(3, 100, 0))).getItem(0), "Excalibur")),
+				"the sword lost its name in the chest");
+		require(tool(server, v, "take_out", "{\"x\":3,\"y\":100,\"z\":0,\"item\":\"minecraft:diamond_sword\",\"count\":1}", 600).startsWith("ok: took 1"), "take_out failed");
+		require(tool(server, v, "give_to_king", "{\"item\":\"minecraft:diamond_sword\",\"count\":1}", 600).startsWith("ok: gave"), "give failed");
+		require(server.computeOnServer(srv -> {
+			for (ItemStack s : srv.getPlayerList().getPlayers().get(0).getInventory().getNonEquipmentItems()) {
+				if (s.is(Items.DIAMOND_SWORD) && hasName(s, "Excalibur")) {
+					return true;
+				}
+			}
+			return false;
+		}), "the sword lost its name on the way to the king");
+		// The king's stacks move over whole and never as one oversized stack.
+		server.runCommand("give @p minecraft:cobblestone 500");
+		CompletableFuture<String> take = toolAsync(server, v, "take_from_king", "{\"item\":\"minecraft:cobblestone\",\"count\":500}");
+		answerDialog(context, "Yes");
+		require(awaitResult(server, take, 100).startsWith("ok: took 500"), "take_from_king 500 failed");
+		require(villagerCount(server, v, Items.COBBLESTONE) == 500, "wrong cobblestone count");
+		require(server.computeOnServer(srv -> {
+			VillagerInventory inv = VillagerInventories.get(v);
+			for (int i = 0; i < inv.getContainerSize(); i++) {
+				if (inv.getItem(i).getCount() > inv.getItem(i).getMaxStackSize()) {
+					return false;
+				}
+			}
+			return true;
+		}), "an oversized stack was created");
+		// drop keeps names too
+		server.runOnServer(srv -> VillagerInventories.get(v).addItem(named(Items.IRON_AXE, 1, "Splitter")));
+		require(tool(server, v, "drop", "{\"item\":\"minecraft:iron_axe\",\"count\":1}", 50).startsWith("ok: dropped"), "drop failed");
+		require(server.computeOnServer(srv -> srv.overworld().getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class,
+				new AABB(-6, 98, -6, 6, 104, 6), e -> hasName(e.getItem(), "Splitter")).size()) == 1, "the dropped axe lost its name");
+	}
+
+	/** With protection off, the range limit is skipped too. */
+	private void reviewRangeSkippedWithoutProtection(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager v = spawnVillager(server, 0, 100, 0);
+		require(tool(server, v, "look_at", "{\"x\":400,\"y\":100,\"z\":0}", 50).startsWith("invalid:"), "the default range should refuse a far block");
+		require(!tool(server, v, configWith(false, false), "look_at", "{\"x\":400,\"y\":100,\"z\":0}", 50).startsWith("invalid:"),
+				"respectProtection=false should skip the range limit");
+	}
+
+	/** A villager never shoots through the king or a pet. */
+	private void reviewLineOfFire(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager v = spawnVillager(server, 0, 100, 0);
+		int husk = mobId(server, "minecraft:husk", 9, 100, 0);
+		server.runOnServer(srv -> {
+			VillagerInventories.get(v).addItem(new ItemStack(Items.BOW));
+			VillagerInventories.get(v).addItem(new ItemStack(Items.ARROW, 4));
+		});
+		server.runCommand("tp @p 4 100 0");
+		String blocked = tool(server, v, "shoot", "{\"entity_id\":" + husk + "}", 200);
+		require(blocked.startsWith("failed") && blocked.contains("line of fire"), "shot through the king: " + blocked);
+		require(villagerCount(server, v, Items.ARROW) == 4, "an arrow was spent");
+		server.runCommand("tp @p 0 100 6");
+		require(tool(server, v, "shoot", "{\"entity_id\":" + husk + "}", 200).startsWith("ok: shot"), "a clear shot should work");
+	}
+
+	private static String toolCall(String name, String argsJson) {
+		return "{\"message\":{\"role\":\"assistant\",\"content\":\"\",\"tool_calls\":[{\"function\":{\"name\":\"" + name
+				+ "\",\"arguments\":" + argsJson + "}}]}}";
+	}
+
+	private static String reply(String text) {
+		return "{\"message\":{\"role\":\"assistant\",\"content\":\"" + text + "\"}}";
+	}
+
+	/** Sends a typed command for the villager and waits until the scripted model has been called {@code calls} times. */
+	private void command(ClientGameTestContext context, TestServerContext server, Villager v, String text, int calls)
+			throws Exception {
+		int id = server.computeOnServer(srv -> v.getId());
+		context.runOnClient(mc -> ClientPlayNetworking.send(new CommandPayload(id, text)));
+	}
+
+	private void answerDialog(ClientGameTestContext context, String answer) {
+		context.waitForScreen(AskScreen.class);
+		context.runOnClient(mc -> ((AskScreen) mc.gui.screen()).choose(answer));
+	}
+
+	private void riskGate(ClientGameTestContext context, TestServerContext server) throws Exception {
+		try {
+			resetArena(server);
+			makeKing(server);
+			Villager v = spawnVillager(server, 0, 100, 0);
+			server.runOnServer(srv -> VillagerBrains.set(v, VillagerBrain.DEFAULT.makeSmart("Alma")));
+			server.runOnServer(srv -> VillagerInventories.get(v).addItem(new ItemStack(Items.TNT, 3)));
+			server.runOnServer(srv -> v.setNoAi(true)); // a wandering villager could step onto the target block
+			BlockPos first = new BlockPos(3, 100, 0);
+			BlockPos second = new BlockPos(3, 100, 1);
+
+			// "No": nothing is placed and the model is told.
+			ollama.script(toolCall("place_block", "{\"item\":\"minecraft:tnt\",\"x\":3,\"y\":100,\"z\":0}"), reply("Understood."));
+			command(context, server, v, "put tnt there", 2);
+			answerDialog(context, "No");
+			server.waitFor(srv -> ollama.requests.size() >= 2, 600);
+			require(ollama.requests.size() >= 2 && ollama.requests.get(1).contains("the king said no"),
+					"the model was not told the king said no");
+			require(server.computeOnServer(srv -> srv.overworld().getBlockState(first).isAir()), "TNT was placed after a no");
+
+			// "Yes": placed.
+			ollama.script(toolCall("place_block", "{\"item\":\"minecraft:tnt\",\"x\":3,\"y\":100,\"z\":0}"), reply("Done."));
+			command(context, server, v, "put tnt there", 2);
+			answerDialog(context, "Yes");
+			server.waitFor(srv -> ollama.requests.size() >= 2, 600);
+			require(server.computeOnServer(srv -> srv.overworld().getBlockState(first).is(Blocks.TNT)), "TNT was not placed after a yes; villager at " + server.computeOnServer(srv -> v.position() + " noai=" + v.isNoAi() + " mainhand=" + v.getMainHandItem() + " inv=" + VillagerInventories.get(v).count(Items.TNT)));
+
+			// Switching asking off needs the king's yes, and is remembered.
+			ollama.script(toolCall("set_ask_preference", "{\"category\":\"explosive\",\"ask\":false}"), reply("Noted."));
+			command(context, server, v, "you can stop asking about explosives", 2);
+			answerDialog(context, "Yes");
+			server.waitFor(srv -> VillagerBrains.get(v).askOff().contains("explosive"), 600);
+			require(server.computeOnServer(srv -> VillagerBrains.get(v).askOff().contains("explosive")), "preference was not saved");
+
+			// With asking off, no dialog appears.
+			server.waitFor(srv -> ollama.requests.size() >= 2, 600);
+			ollama.script(toolCall("place_block", "{\"item\":\"minecraft:tnt\",\"x\":3,\"y\":100,\"z\":1}"), reply("Done."));
+			command(context, server, v, "again", 2);
+			server.waitFor(srv -> srv.overworld().getBlockState(second).is(Blocks.TNT), 600);
+			require(server.computeOnServer(srv -> srv.overworld().getBlockState(second).is(Blocks.TNT)), "TNT was not placed without asking");
+			require(!context.computeOnClient(mc -> mc.gui.screen() instanceof AskScreen), "a dialog opened although asking is off");
+
+			// Turning asking back on is immediate and needs no dialog.
+			ollama.script(toolCall("set_ask_preference", "{\"category\":\"explosive\",\"ask\":true}"), reply("Noted."));
+			command(context, server, v, "ask me again about explosives", 2);
+			server.waitFor(srv -> !VillagerBrains.get(v).askOff().contains("explosive"), 600);
+			require(server.computeOnServer(srv -> VillagerBrains.get(v).askOff().isEmpty()), "asking was not switched back on");
+		} finally {
+			// nothing to undo
+		}
 	}
 
 	private void bubbleRestored(TestServerContext server) {

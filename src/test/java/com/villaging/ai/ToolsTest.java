@@ -37,7 +37,9 @@ class ToolsTest {
 
 	@Test
 	void foundationRegistersTheFiveTools() {
-		assertEquals(5, Tools.all().size());
+		for (String name : new String[] {"say", "follow_me", "stop", "go_to", "mine_block"}) {
+			assertTrue(Tools.all().stream().anyMatch(t -> t.name().equals(name)), name);
+		}
 		assertTrue(Tools.all().stream().anyMatch(t -> t.name().equals("mine_block")));
 	}
 

@@ -263,4 +263,15 @@ class AgentLoopTest {
 		assertEquals(2, finished.get(0).size()); // user "now" + assistant "ok"
 		assertEquals("now", finished.get(0).get(0).text());
 	}
+
+	@Test
+	void theToolTimeoutIsConfigurable() {
+		Scripted provider = new Scripted(tool("t", "go_to"), text("Gave up."));
+		FakeExecutor exec = new FakeExecutor();
+		exec.behavior = c -> new CompletableFuture<>(); // never finishes
+		new AgentLoop(provider, 20, () -> true, 0, millis -> {}).withToolTimeout(1).start("sys", List.of(), "go", exec,
+				replies::add, finished::add, Runnable::run);
+		List<ChatMessage> second = provider.seen.get(1);
+		assertEquals("failed: timed out", second.get(second.size() - 1).text());
+	}
 }
