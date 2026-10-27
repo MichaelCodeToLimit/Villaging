@@ -1,6 +1,9 @@
 package com.villaging.gametest;
 
 import com.villaging.ModItems;
+import com.villaging.ai.ToolDef;
+import com.villaging.ai.ToolSchema;
+import com.villaging.ai.Tools;
 import com.villaging.client.AskScreen;
 import com.villaging.client.VillagerChatScreen;
 import com.villaging.config.VillagingConfig;
@@ -12,6 +15,7 @@ import com.villaging.villager.ActionManager;
 import com.villaging.villager.FollowAction;
 import com.villaging.villager.GoToAction;
 import com.villaging.villager.HandsManager;
+import com.villaging.villager.ToolHandlers;
 import com.villaging.villager.VillagerHands;
 import com.villaging.villager.MineAction;
 import com.villaging.villager.SpeechBubble;
@@ -25,6 +29,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
@@ -115,6 +120,7 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 			attempt("ask opens the dialog and an option button answers the model", () -> askRound(context, server, "Left", c -> c.runOnClient(mc -> ((AskScreen) mc.gui.screen()).choose("Left")), "ok: the king answered \"Left\""));
 			attempt("ask accepts the king's own typed answer", () -> askRound(context, server, "Burn it all", c -> { c.getInput().typeChars("Burn it all"); c.getInput().pressKey(GLFW.GLFW_KEY_ENTER); }, "ok: the king answered \"Burn it all\""));
 			attempt("closing the ask dialog reads as no answer", () -> askRound(context, server, null, c -> c.runOnClient(mc -> mc.gui.screen().onClose()), "failed: the king did not answer"));
+			attempt("risky acts ask the king first and asking can be switched off", () -> riskGate(context, server));
 			attempt("a command from a non-king is ignored", () -> forgedPacket(context, server));
 		} finally {
 			ollama.close();
@@ -443,6 +449,86 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 		require(ollama.requests.size() >= 2, "the model never got the answer");
 		String second = ollama.requests.get(1);
 		require(second.contains(expected.replace("\"", "\\\"")), "expected the tool result '" + expected + "' in: " + second);
+	}
+
+	private static String toolCall(String name, String argsJson) {
+		return "{\"message\":{\"role\":\"assistant\",\"content\":\"\",\"tool_calls\":[{\"function\":{\"name\":\"" + name
+				+ "\",\"arguments\":" + argsJson + "}}]}}";
+	}
+
+	private static String reply(String text) {
+		return "{\"message\":{\"role\":\"assistant\",\"content\":\"" + text + "\"}}";
+	}
+
+	/** Sends a typed command for the villager and waits until the scripted model has been called {@code calls} times. */
+	private void command(ClientGameTestContext context, TestServerContext server, Villager v, String text, int calls)
+			throws Exception {
+		int id = server.computeOnServer(srv -> v.getId());
+		context.runOnClient(mc -> ClientPlayNetworking.send(new CommandPayload(id, text)));
+	}
+
+	private void answerDialog(ClientGameTestContext context, String answer) {
+		context.waitForScreen(AskScreen.class);
+		context.runOnClient(mc -> ((AskScreen) mc.gui.screen()).choose(answer));
+	}
+
+	private void riskGate(ClientGameTestContext context, TestServerContext server) throws Exception {
+		// Stand-in for the real place_block (Task 10): puts TNT where the call says.
+		Tools.register(new ToolDef("place_block", "test stand-in", ToolSchema.object().build()),
+				(args, range, ox, oy, oz) -> Optional.empty());
+		ToolHandlers.register("place_block", (ctx, args) -> {
+			BlockPos p = new BlockPos(args.get("x").getAsInt(), args.get("y").getAsInt(), args.get("z").getAsInt());
+			ctx.villager().level().setBlockAndUpdate(p, Blocks.TNT.defaultBlockState());
+			return CompletableFuture.completedFuture("ok: placed");
+		});
+		try {
+			resetArena(server);
+			makeKing(server);
+			Villager v = spawnVillager(server, 0, 100, 0);
+			server.runOnServer(srv -> VillagerBrains.set(v, VillagerBrain.DEFAULT.makeSmart("Alma")));
+			BlockPos first = new BlockPos(3, 100, 0);
+			BlockPos second = new BlockPos(5, 100, 0);
+
+			// "No": nothing is placed and the model is told.
+			ollama.script(toolCall("place_block", "{\"item\":\"minecraft:tnt\",\"x\":3,\"y\":100,\"z\":0}"), reply("Understood."));
+			command(context, server, v, "put tnt there", 2);
+			answerDialog(context, "No");
+			server.waitFor(srv -> ollama.requests.size() >= 2, 600);
+			require(ollama.requests.size() >= 2 && ollama.requests.get(1).contains("the king said no"),
+					"the model was not told the king said no");
+			require(server.computeOnServer(srv -> srv.overworld().getBlockState(first).isAir()), "TNT was placed after a no");
+
+			// "Yes": placed.
+			ollama.script(toolCall("place_block", "{\"item\":\"minecraft:tnt\",\"x\":3,\"y\":100,\"z\":0}"), reply("Done."));
+			command(context, server, v, "put tnt there", 2);
+			answerDialog(context, "Yes");
+			server.waitFor(srv -> ollama.requests.size() >= 2, 600);
+			require(server.computeOnServer(srv -> srv.overworld().getBlockState(first).is(Blocks.TNT)), "TNT was not placed after a yes");
+
+			// Switching asking off needs the king's yes, and is remembered.
+			ollama.script(toolCall("set_ask_preference", "{\"category\":\"explosive\",\"ask\":false}"), reply("Noted."));
+			command(context, server, v, "you can stop asking about explosives", 2);
+			answerDialog(context, "Yes");
+			server.waitFor(srv -> VillagerBrains.get(v).askOff().contains("explosive"), 600);
+			require(server.computeOnServer(srv -> VillagerBrains.get(v).askOff().contains("explosive")), "preference was not saved");
+
+			// With asking off, no dialog appears.
+			server.waitFor(srv -> ollama.requests.size() >= 2, 600);
+			ollama.script(toolCall("place_block", "{\"item\":\"minecraft:tnt\",\"x\":5,\"y\":100,\"z\":0}"), reply("Done."));
+			command(context, server, v, "again", 2);
+			server.waitFor(srv -> srv.overworld().getBlockState(second).is(Blocks.TNT), 600);
+			require(server.computeOnServer(srv -> srv.overworld().getBlockState(second).is(Blocks.TNT)), "TNT was not placed without asking");
+			require(!context.computeOnClient(mc -> mc.gui.screen() instanceof AskScreen), "a dialog opened although asking is off");
+
+			// Turning asking back on is immediate and needs no dialog.
+			ollama.script(toolCall("set_ask_preference", "{\"category\":\"explosive\",\"ask\":true}"), reply("Noted."));
+			command(context, server, v, "ask me again about explosives", 2);
+			server.waitFor(srv -> !VillagerBrains.get(v).askOff().contains("explosive"), 600);
+			require(server.computeOnServer(srv -> VillagerBrains.get(v).askOff().isEmpty()), "asking was not switched back on");
+		} finally {
+			Tools.unregister("place_block");
+			ToolHandlers.unregister("place_block");
+		}
 	}
 
 	private void bubbleRestored(TestServerContext server) {

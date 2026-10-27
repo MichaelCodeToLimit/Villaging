@@ -17,6 +17,10 @@ public final class ToolHandlers {
 		HANDLERS.put(name, handler);
 	}
 
+	public static void unregister(String name) {
+		HANDLERS.remove(name);
+	}
+
 	public static Optional<ToolHandler> get(String name) {
 		return Optional.ofNullable(HANDLERS.get(name));
 	}
