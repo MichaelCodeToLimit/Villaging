@@ -28,6 +28,7 @@ public final class ToolHandlers {
 	/** Registers every ability group's handlers; safe to call more than once. */
 	public static void registerAbilities() {
 		AskHandlers.register();
+		LookHandlers.register();
 	}
 
 	/** Registers the Foundation tools; safe to call more than once. */

@@ -1,6 +1,7 @@
 package com.villaging.gametest;
 
 import com.villaging.ModItems;
+import com.villaging.ai.ToolCall;
 import com.villaging.ai.ToolDef;
 import com.villaging.ai.ToolSchema;
 import com.villaging.ai.Tools;
@@ -15,6 +16,7 @@ import com.villaging.villager.ActionManager;
 import com.villaging.villager.FollowAction;
 import com.villaging.villager.GoToAction;
 import com.villaging.villager.HandsManager;
+import com.villaging.villager.MinecraftActionExecutor;
 import com.villaging.villager.ToolHandlers;
 import com.villaging.villager.VillagerHands;
 import com.villaging.villager.MineAction;
@@ -120,6 +122,7 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 			attempt("ask opens the dialog and an option button answers the model", () -> askRound(context, server, "Left", c -> c.runOnClient(mc -> ((AskScreen) mc.gui.screen()).choose("Left")), "ok: the king answered \"Left\""));
 			attempt("ask accepts the king's own typed answer", () -> askRound(context, server, "Burn it all", c -> { c.getInput().typeChars("Burn it all"); c.getInput().pressKey(GLFW.GLFW_KEY_ENTER); }, "ok: the king answered \"Burn it all\""));
 			attempt("closing the ask dialog reads as no answer", () -> askRound(context, server, null, c -> c.runOnClient(mc -> mc.gui.screen().onClose()), "failed: the king did not answer"));
+			attempt("look_around, look_at and check_inventory report the surroundings", () -> lookTools(server));
 			attempt("risky acts ask the king first and asking can be switched off", () -> riskGate(context, server));
 			attempt("a command from a non-king is ignored", () -> forgedPacket(context, server));
 		} finally {
@@ -449,6 +452,42 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 		require(ollama.requests.size() >= 2, "the model never got the answer");
 		String second = ollama.requests.get(1);
 		require(second.contains(expected.replace("\"", "\\\"")), "expected the tool result '" + expected + "' in: " + second);
+	}
+
+	/** Runs one tool through the real validate, risk gate and handler path with no model, and returns its result. */
+	private static String tool(TestServerContext server, Villager v, String name, String argsJson, int ticks) throws Exception {
+		return tool(server, v, VillagingConfig.defaults(), name, argsJson, ticks);
+	}
+
+	private static String tool(TestServerContext server, Villager v, VillagingConfig config, String name, String argsJson,
+			int ticks) throws Exception {
+		UUID king = playerId(server);
+		CompletableFuture<String> future = server.computeOnServer(srv -> {
+			MinecraftActionExecutor exec = new MinecraftActionExecutor(srv, v, king, config);
+			ToolCall call = new ToolCall("t", name, com.google.gson.JsonParser.parseString(argsJson).getAsJsonObject());
+			Optional<String> bad = exec.validate(call);
+			return bad.isPresent() ? CompletableFuture.completedFuture("invalid: " + bad.get()) : exec.execute(call);
+		});
+		return awaitResult(server, future, ticks);
+	}
+
+	private void lookTools(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		server.runCommand("setblock 3 100 0 minecraft:chest");
+		server.runCommand("item replace block 3 100 0 container.0 with minecraft:diamond 3");
+		server.runCommand("setblock -3 100 0 minecraft:iron_ore");
+		Villager v = spawnVillager(server, 0, 100, 0);
+		server.runOnServer(srv -> VillagerInventories.get(v).addItem(new ItemStack(Items.APPLE, 4)));
+		String around = tool(server, v, "look_around", "{}", 20);
+		require(around.startsWith("ok:") && around.contains("chest") && around.contains("iron_ore") && around.contains("3, 100, 0"),
+				"look_around missed the chest or ore: " + around);
+		require(around.contains("villager") || around.contains("Creatures"), "look_around has no creatures section: " + around);
+		String at = tool(server, v, "look_at", "{\"x\":3,\"y\":100,\"z\":0}", 20);
+		require(at.contains("chest") && at.contains("diamond") && at.contains("3"), "look_at did not show the chest contents: " + at);
+		String inv = tool(server, v, "check_inventory", "{}", 20);
+		require(inv.contains("apple") && inv.contains("4"), "check_inventory wrong: " + inv);
+		require(tool(server, v, "look_around", "{\"radius\":99}", 20).startsWith("invalid:"), "radius 99 was accepted");
 	}
 
 	private static String toolCall(String name, String argsJson) {
