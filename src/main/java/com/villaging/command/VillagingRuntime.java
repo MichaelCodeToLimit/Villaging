@@ -130,7 +130,7 @@ public final class VillagingRuntime implements CommandService.Backend {
 		List<ChatMessage> history = Conversation.historyFrom(brain);
 		VillagerBrains.set(villager, Conversation.withKingMessage(brain, message));
 
-		MinecraftActionExecutor executor = new MinecraftActionExecutor(server, villager, player, config.actionRange());
+		MinecraftActionExecutor executor = new MinecraftActionExecutor(server, villager, player, config);
 		RateLimiter limiter = modelCallLimiters.computeIfAbsent(villager.getUUID(),
 				id -> new RateLimiter(config.callsPerMinute(), System::nanoTime));
 		AtomicBoolean cancelled = new AtomicBoolean();

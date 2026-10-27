@@ -4,10 +4,10 @@ import com.google.gson.JsonObject;
 import com.villaging.ai.ActionExecutor;
 import com.villaging.ai.ToolCall;
 import com.villaging.ai.Tools;
+import com.villaging.config.VillagingConfig;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
-import net.minecraft.core.BlockPos;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.entity.npc.villager.Villager;
 
@@ -16,18 +16,18 @@ public final class MinecraftActionExecutor implements ActionExecutor {
 	private final MinecraftServer server;
 	private final Villager villager;
 	private final UUID kingId;
-	private final int range;
+	private final VillagingConfig config;
 
-	public MinecraftActionExecutor(MinecraftServer server, Villager villager, UUID kingId, int range) {
+	public MinecraftActionExecutor(MinecraftServer server, Villager villager, UUID kingId, VillagingConfig config) {
 		this.server = server;
 		this.villager = villager;
 		this.kingId = kingId;
-		this.range = range;
+		this.config = config;
 	}
 
 	@Override
 	public Optional<String> validate(ToolCall call) {
-		return Tools.validate(call, range, villager.getX(), villager.getY(), villager.getZ());
+		return Tools.validate(call, config.actionRange(), villager.getX(), villager.getY(), villager.getZ());
 	}
 
 	@Override
@@ -38,24 +38,16 @@ public final class MinecraftActionExecutor implements ActionExecutor {
 				result.completeExceptionally(new IllegalStateException("villager is gone"));
 				return;
 			}
-			JsonObject args = call.args();
-			switch (call.name()) {
-				case "say" -> {
-					VillagerSpeech.say(server, villager, kingId, args.get("text").getAsString());
-					result.complete("ok");
-				}
-				case "stop" -> {
-					ActionManager.INSTANCE.stop(villager);
-					result.complete("ok: stopped");
-				}
-				case "follow_me" -> chain(ActionManager.INSTANCE.run(villager, new FollowAction(kingId)), result);
-				case "go_to" -> chain(ActionManager.INSTANCE.run(villager,
-						new GoToAction(args.get("x").getAsDouble(), args.get("y").getAsDouble(), args.get("z").getAsDouble())),
-						result);
-				case "mine_block" -> chain(ActionManager.INSTANCE.run(villager,
-						new MineAction(new BlockPos(args.get("x").getAsInt(), args.get("y").getAsInt(), args.get("z").getAsInt()), kingId)),
-						result);
-				default -> result.complete("failed: unknown tool " + call.name());
+			Optional<ToolHandler> handler = ToolHandlers.get(call.name());
+			if (handler.isEmpty()) {
+				result.complete("failed: unknown tool " + call.name());
+				return;
+			}
+			JsonObject args = call.args() == null ? new JsonObject() : call.args();
+			try {
+				chain(handler.get().run(new ToolContext(server, villager, kingId, config), args), result);
+			} catch (RuntimeException e) {
+				result.complete("failed: " + e.getMessage());
 			}
 		});
 		return result;

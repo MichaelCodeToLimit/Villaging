@@ -10,6 +10,7 @@ import com.villaging.net.OpenChatPayload;
 import com.villaging.villager.ActionManager;
 import com.villaging.villager.VillagerBrain;
 import com.villaging.villager.VillagerBrains;
+import com.villaging.villager.ToolHandlers;
 import com.villaging.villager.VillagerSpeech;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
@@ -37,6 +38,7 @@ public class Villaging implements ModInitializer {
 	public void onInitialize() {
 		ModItems.init();
 		VillagerBrains.init();
+		ToolHandlers.registerBase();
 		Kings.init();
 
 		PayloadTypeRegistry.serverboundPlay().register(CommandPayload.TYPE, CommandPayload.CODEC);
