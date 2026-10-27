@@ -139,6 +139,7 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 			attempt("players and pets are never attacked or shot", () -> combatNeverHurtsPlayersOrPets(server));
 			attempt("shoot hits a target with a bow", () -> combatShoot(server));
 			attempt("guard protects the king and spares pets, flee runs away", () -> combatGuardAndFlee(server));
+			attempt("sit stays put and sleep lies down at night and wakes at dawn", () -> sitAndSleep(server));
 			attempt("container tools look in, fill and empty a chest", () -> containerTools(server));
 			attempt("a command from a non-king is ignored", () -> forgedPacket(context, server));
 		} finally {
@@ -907,6 +908,42 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 		require(fled.startsWith("ok: ran away"), "flee said " + fled);
 		double after = server.computeOnServer(srv -> v.distanceTo(srv.overworld().getEntity(threat)));
 		require(after > before + 5, "the villager did not get away: " + before + " -> " + after);
+	}
+
+	/** Lets the server run for a number of ticks. */
+	private static void waitTicks(TestServerContext server, int ticks) {
+		int start = server.computeOnServer(srv -> srv.getTickCount());
+		server.waitFor(srv -> srv.getTickCount() - start >= ticks, ticks + 40);
+	}
+
+	private void sitAndSleep(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager v = spawnVillager(server, 0, 100, 0);
+		// sit: stays put while an ordinary villager would wander
+		require(tool(server, v, "sit", "{}", 50).startsWith("ok"), "sit failed");
+		Vec3 sat = server.computeOnServer(srv -> v.position());
+		waitTicks(server, 80);
+		require(server.computeOnServer(srv -> v.position().distanceTo(sat)) < 0.5, "the villager moved while sitting");
+		require(tool(server, v, "stop", "{}", 20).startsWith("ok"), "stop failed");
+		// sleep: not in daytime, yes at night, and it wakes at dawn
+		server.runCommand("setblock 3 100 0 minecraft:red_bed[facing=east,part=foot]");
+		server.runCommand("setblock 4 100 0 minecraft:red_bed[facing=east,part=head]");
+		server.runCommand("time set noon");
+		waitTicks(server, 5);
+		String day = tool(server, v, "sleep", "{\"x\":3,\"y\":100,\"z\":0}", 100);
+		require(day.startsWith("failed") && day.contains("night"), "sleeping by day should fail: " + day);
+		server.runCommand("time set midnight");
+		server.waitFor(srv -> srv.overworld().isDarkOutside(), 60);
+		String night = tool(server, v, "sleep", "{\"x\":3,\"y\":100,\"z\":0}", 800);
+		require(night.startsWith("ok"), "sleep said " + night);
+		require(server.computeOnServer(srv -> v.isSleeping()), "the villager is not asleep");
+		waitTicks(server, 40);
+		require(server.computeOnServer(srv -> v.isSleeping()), "the villager woke up too early");
+		server.runCommand("time set noon");
+		server.waitFor(srv -> !v.isSleeping(), 200);
+		require(!server.computeOnServer(srv -> v.isSleeping()), "the villager did not wake at dawn");
+		require(tool(server, v, "sleep", "{\"x\":9,\"y\":100,\"z\":9}", 100).startsWith("failed"), "sleeping with no bed should fail");
 	}
 
 	private static String toolCall(String name, String argsJson) {

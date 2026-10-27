@@ -35,6 +35,7 @@ public final class ToolHandlers {
 		CraftHandlers.register();
 		GatherHandlers.register();
 		CombatHandlers.register();
+		MoveHandlers.register();
 	}
 
 	/** Registers the Foundation tools; safe to call more than once. */
