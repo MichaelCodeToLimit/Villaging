@@ -1,10 +1,10 @@
 # Villaging
 
-A Fabric mod for Minecraft 26.2 that makes villagers smart. You are their king: sneak and right-click a smart
-villager, type anything into the box, and an AI decides what the villager does. Villagers act through a fixed
+A Fabric mod for Minecraft 26.2 that makes villagers, iron golems and copper golems smart. You are their king:
+right-click a smart helper, chat in plain words, and an AI decides what it does. Helpers act through a fixed
 set of safe tools (the things a player's hands can do), never by running code.
 
-**This is the Abilities release.** A smart villager can talk, follow, walk, mine, place and use blocks, break
+**Version 1.0.0.** A smart villager can talk, follow, walk, mine, place and use blocks, break
 areas, carry and trade items, work chests, craft, smelt, brew, chop trees, farm, fish, shear, milk, breed and tame
 animals, fight, guard, flee, sit and sleep. It can run whole plans for long jobs and ask you questions in a pop-up.
 Building from blueprints, ranks and chains of command beyond relaying orders are the next sub-projects (see
