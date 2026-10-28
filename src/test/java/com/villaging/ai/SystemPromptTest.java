@@ -40,7 +40,8 @@ class SystemPromptTest {
 		assertTrue(p.contains("look_around"), "missing the look-first advice");
 		assertTrue(p.contains("take_from_king"), "missing the taking rule");
 		assertTrue(p.contains("ask"), "missing the question tool");
-		assertTrue(p.contains("cannot do that yet"), "must stay honest about limits");
+		assertTrue(p.contains("never just refuse"), "must not refuse flatly");
+		assertTrue(p.contains("still being learned"), "must stay honest about limits");
 	}
 
 	@Test
@@ -58,7 +59,7 @@ class SystemPromptTest {
 		assertTrue(p.contains("typos"));
 		assertTrue(p.contains("one short clarifying question"));
 		assertTrue(p.contains("Never claim"));
-		assertTrue(p.contains("cannot do that yet"));
+		assertTrue(p.contains("never say you cannot"));
 		assertTrue(p.contains("that block"));
 	}
 

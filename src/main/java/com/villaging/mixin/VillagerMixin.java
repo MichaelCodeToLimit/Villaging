@@ -16,7 +16,7 @@ public abstract class VillagerMixin {
 	@Redirect(method = "customServerAiStep", at = @At(value = "INVOKE",
 			target = "Lnet/minecraft/world/entity/ai/Brain;tick(Lnet/minecraft/server/level/ServerLevel;Lnet/minecraft/world/entity/LivingEntity;)V"))
 	private void villaging$pauseBrainWhileObeying(Brain brain, ServerLevel level, LivingEntity entity) {
-		if (!ActionManager.isControlled((Villager) (Object) this)) {
+		if (!ActionManager.pausesVanillaAi((Villager) (Object) this)) {
 			brain.tick(level, entity);
 		}
 	}

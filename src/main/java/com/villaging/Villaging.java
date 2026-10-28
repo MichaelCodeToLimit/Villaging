@@ -3,9 +3,11 @@ package com.villaging;
 import com.villaging.command.CommandService.CommandResult;
 import com.villaging.command.VillagingRuntime;
 import com.villaging.config.VillagingConfig;
+import com.villaging.king.ClickRule;
 import com.villaging.king.CrownItem;
 import com.villaging.king.Kings;
 import com.villaging.command.KeySettings;
+import com.villaging.net.OpenGuidePayload;
 import com.villaging.net.OpenKeyPayload;
 import com.villaging.net.SetKeyPayload;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
@@ -14,7 +16,11 @@ import net.minecraft.commands.Commands;
 import com.villaging.net.AnswerPayload;
 import com.villaging.net.AskPayload;
 import com.villaging.net.CommandPayload;
+import com.villaging.net.ChatLinePayload;
+import com.villaging.net.CloseChatPayload;
 import com.villaging.net.OpenChatPayload;
+import com.villaging.villager.ChatTranscript;
+import com.villaging.villager.TalkHold;
 import com.villaging.ai.tools.AbilityTools;
 import com.villaging.ai.PendingQuestions;
 import com.villaging.villager.ActionManager;
@@ -79,10 +85,13 @@ public class Villaging implements ModInitializer {
 
 		PayloadTypeRegistry.serverboundPlay().register(CommandPayload.TYPE, CommandPayload.CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(OpenChatPayload.TYPE, OpenChatPayload.CODEC);
+		PayloadTypeRegistry.clientboundPlay().register(ChatLinePayload.TYPE, ChatLinePayload.CODEC);
+		PayloadTypeRegistry.serverboundPlay().register(CloseChatPayload.TYPE, CloseChatPayload.CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(AskPayload.TYPE, AskPayload.CODEC);
 		PayloadTypeRegistry.serverboundPlay().register(AnswerPayload.TYPE, AnswerPayload.CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(OpenKeyPayload.TYPE, OpenKeyPayload.CODEC);
 		PayloadTypeRegistry.serverboundPlay().register(SetKeyPayload.TYPE, SetKeyPayload.CODEC);
+		PayloadTypeRegistry.clientboundPlay().register(OpenGuidePayload.TYPE, OpenGuidePayload.CODEC);
 
 		ServerLifecycleEvents.SERVER_STARTED.register(server -> runtime = new VillagingRuntime(server,
 				VillagingConfig.load(configFile())));
@@ -106,7 +115,11 @@ public class Villaging implements ModInitializer {
 					ServerPlayNetworking.send(player,
 							new OpenKeyPayload(current != null ? current.config().provider() : "cloud"));
 					return 1;
-				}))));
+				}))
+						.then(Commands.literal("guide").executes(context -> {
+							ServerPlayNetworking.send(context.getSource().getPlayerOrException(), new OpenGuidePayload());
+							return 1;
+						}))));
 		ServerPlayNetworking.registerGlobalReceiver(SetKeyPayload.TYPE, (payload, context) -> {
 			// The key is never logged or echoed back.
 			ServerPlayer player = context.player();
@@ -124,21 +137,31 @@ public class Villaging implements ModInitializer {
 			PendingQuestions.INSTANCE.cancelAll();
 			ScriptManager.INSTANCE.cancelAll();
 			VillagerSpeech.clear();
+			TalkHold.clear();
 		});
 		ServerTickEvents.END_LEVEL_TICK.register(ActionManager.INSTANCE::tick);
 		ServerTickEvents.END_SERVER_TICK.register(server -> {
 			VillagerSpeech.tick();
+			TalkHold.tick(server);
 			PendingQuestions.INSTANCE.expire(System.nanoTime());
 		});
 
 		ServerPlayNetworking.registerGlobalReceiver(AnswerPayload.TYPE, (payload, context) ->
 				PendingQuestions.INSTANCE.answer(context.player().getUUID(), payload.questionId(), payload.answer(), System.nanoTime()));
 
+		ServerPlayNetworking.registerGlobalReceiver(CloseChatPayload.TYPE, (payload, context) ->
+				TalkHold.release(payload.villagerId(), context.player().getUUID()));
+		ServerPlayConnectionEvents.DISCONNECT.register((handler, server) ->
+				TalkHold.releaseKing(handler.getPlayer().getUUID()));
+
 		ServerPlayNetworking.registerGlobalReceiver(CommandPayload.TYPE, (payload, context) -> {
 			VillagingRuntime current = runtime;
 			ServerPlayer player = context.player();
 			if (current == null) {
 				return;
+			}
+			if (player.level().getEntity(payload.villagerId()) instanceof PathfinderMob talking) {
+				TalkHold.renew(talking, player.getUUID());
 			}
 			CommandResult result = current.handle(player, payload.villagerId(), payload.message());
 			if (result != CommandResult.ACCEPTED && result != CommandResult.REJECTED_NOT_KING) {
@@ -156,15 +179,21 @@ public class Villaging implements ModInitializer {
 			VillagerBrain brain = VillagerBrains.get(villager);
 			// Sneak + right-click on any villager opens the box; speaking to an ordinary one makes it smart.
 			boolean mayCommand = Kings.isKing(level.getServer(), sp.getUUID()) || Kings.get(level.getServer()).king().isEmpty();
-			if (player.isShiftKeyDown() && mayCommand && (villager instanceof Villager || brain.smart())) {
-				ServerPlayNetworking.send(sp, new OpenChatPayload(villager.getId(),
-						brain.smart() ? brain.name() : "this villager"));
-				return InteractionResult.SUCCESS_SERVER;
+			switch (ClickRule.decide(mayCommand, brain.smart(), villager instanceof Villager, player.isShiftKeyDown(),
+					sp.getItemInHand(hand).is(ModItems.CROWN))) {
+				case OPEN_CHAT -> {
+					ServerPlayNetworking.send(sp, new OpenChatPayload(villager.getId(),
+							brain.smart() ? brain.name() : "this villager", ChatTranscript.forClient(brain.memory())));
+					TalkHold.start(villager, sp.getUUID());
+					return InteractionResult.SUCCESS_SERVER;
+				}
+				case CROWN -> {
+					return CrownItem.applyToVillager(sp, villager);
+				}
+				default -> {
+					return InteractionResult.PASS;
+				}
 			}
-			if (sp.getItemInHand(hand).is(ModItems.CROWN)) {
-				return CrownItem.applyToVillager(sp, villager);
-			}
-			return InteractionResult.PASS;
 		});
 
 		// The villager's hidden fake player goes with it.
@@ -173,6 +202,7 @@ public class Villaging implements ModInitializer {
 				HandsManager.release(villager);
 				PendingQuestions.INSTANCE.cancelFor(villager.getId());
 				ScriptManager.INSTANCE.cancel(villager);
+				TalkHold.release(villager);
 			}
 		});
 

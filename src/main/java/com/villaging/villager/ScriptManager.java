@@ -68,6 +68,11 @@ public final class ScriptManager {
 		return result;
 	}
 
+	/** True while the villager is running a task script (between its steps vanilla AI must not wander it off). */
+	public boolean isRunning(PathfinderMob villager) {
+		return cancelFlags.containsKey(villager.getUUID());
+	}
+
 	/** Stops the villager's script, if any. Returns whether one was running. */
 	public boolean cancel(PathfinderMob villager) {
 		AtomicBoolean flag = cancelFlags.remove(villager.getUUID());

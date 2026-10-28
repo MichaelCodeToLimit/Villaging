@@ -1,9 +1,11 @@
 package com.villaging.villager;
 
+import com.villaging.net.ChatLinePayload;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
@@ -30,6 +32,8 @@ public final class VillagerSpeech {
 		ServerPlayer king = server.getPlayerList().getPlayer(kingId);
 		if (king != null) {
 			king.sendSystemMessage(Component.literal("<" + name + "> " + text));
+			// An open chat screen with this villager shows the line too.
+			ServerPlayNetworking.send(king, new ChatLinePayload(villager.getId(), text));
 		}
 		villager.setCustomName(Component.literal(SpeechBubble.format(text)));
 		villager.setCustomNameVisible(true);

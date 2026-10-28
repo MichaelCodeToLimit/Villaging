@@ -16,7 +16,7 @@ public abstract class CopperGolemMixin {
 	@Redirect(method = "customServerAiStep", at = @At(value = "INVOKE",
 			target = "Lnet/minecraft/world/entity/ai/Brain;tick(Lnet/minecraft/server/level/ServerLevel;Lnet/minecraft/world/entity/LivingEntity;)V"))
 	private void villaging$pauseBrainWhileObeying(Brain brain, ServerLevel level, LivingEntity entity) {
-		if (!ActionManager.isControlled((CopperGolem) (Object) this)) {
+		if (!ActionManager.pausesVanillaAi((CopperGolem) (Object) this)) {
 			brain.tick(level, entity);
 		}
 	}

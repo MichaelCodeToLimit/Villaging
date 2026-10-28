@@ -131,12 +131,26 @@ class AgentLoopTest {
 	}
 
 	@Test
-	void providerFailureRetriesOnceThenSaysCantThink() {
+	void providerFailureKeepsRetryingPatientlyAndNeverSaysCant() {
 		Scripted provider = new Scripted(new AiException("down"));
-		run(provider, 20, new FakeExecutor());
-		assertEquals(2, provider.calls());
-		assertEquals(List.of(AgentLoop.CANT_THINK), replies);
+		List<Long> waits = new ArrayList<>();
+		new AgentLoop(provider, 20, () -> true, 1500, waits::add).start("sys", List.of(), "hi", new FakeExecutor(),
+				replies::add, finished::add, Runnable::run);
+		assertEquals(5, provider.calls());
+		assertEquals(List.of(1500L, 4500L, 12000L, 30000L), waits);
+		assertEquals(List.of(AgentLoop.WAITING, AgentLoop.STILL_THINKING), replies);
+		for (String reply : replies) {
+			assertFalse(reply.toLowerCase().contains("can't") || reply.toLowerCase().contains("cannot"), reply);
+		}
 		assertEquals(1, finished.size());
+	}
+
+	@Test
+	void aVillagerThatRecoversAfterWaitingStillAnswers() {
+		Scripted provider = new Scripted(new AiException("a"), new AiException("b"), new AiException("c"), text("Here."));
+		new AgentLoop(provider, 20, () -> true, 1500, w -> {
+		}).start("sys", List.of(), "hi", new FakeExecutor(), replies::add, finished::add, Runnable::run);
+		assertEquals(List.of(AgentLoop.WAITING, "Here."), replies);
 	}
 
 	@Test
@@ -183,25 +197,37 @@ class AgentLoopTest {
 	}
 
 	@Test
-	void unexpectedProviderExceptionSaysCantThinkInsteadOfDyingSilently() {
+	void unexpectedProviderExceptionIsHandledPatientlyInsteadOfDyingSilently() {
 		AiProvider broken = (system, messages, tools) -> {
 			throw new IllegalStateException("parse blew up");
 		};
-		run(broken, 20, new FakeExecutor());
-		assertEquals(List.of(AgentLoop.CANT_THINK), replies);
+		new AgentLoop(broken, 20, () -> true, 1500, w -> {
+		}).start("sys", List.of(), "hi", new FakeExecutor(), replies::add, finished::add, Runnable::run);
+		assertEquals(List.of(AgentLoop.WAITING, AgentLoop.STILL_THINKING), replies);
 		assertEquals(1, finished.size());
 	}
 
 	@Test
-	void callPermitDeniedStopsTheLoopWithAPoliteMessage() {
+	void aDeniedCallPermitMakesTheVillagerWaitThenGiveAPoliteMessage() {
 		Scripted provider = new Scripted(tool("t", "stop"));
 		FakeExecutor exec = new FakeExecutor();
 		int[] permits = {2};
-		new AgentLoop(provider, 20, () -> permits[0]-- > 0).start("sys", List.of(), "go", exec, replies::add,
-				finished::add, Runnable::run);
+		List<Long> waits = new ArrayList<>();
+		new AgentLoop(provider, 20, () -> permits[0]-- > 0, 1500, waits::add).start("sys", List.of(), "go", exec,
+				replies::add, finished::add, Runnable::run);
 		assertEquals(2, provider.calls());
-		assertEquals(List.of(AgentLoop.TOO_BUSY), replies);
+		assertEquals(12, waits.size());
+		assertEquals(List.of(AgentLoop.WAITING, AgentLoop.STILL_THINKING), replies);
 		assertEquals(1, finished.size());
+	}
+
+	@Test
+	void aCallPermitThatOpensUpAfterWaitingLetsTheVillagerCarryOn() {
+		Scripted provider = new Scripted(text("Done."));
+		int[] denials = {3};
+		new AgentLoop(provider, 20, () -> denials[0]-- <= 0, 1500, w -> {
+		}).start("sys", List.of(), "go", new FakeExecutor(), replies::add, finished::add, Runnable::run);
+		assertEquals(List.of(AgentLoop.WAITING, "Done."), replies);
 	}
 
 	@Test

@@ -31,6 +31,6 @@ public abstract class MobMixin {
 	}
 
 	private boolean villaging$obeying() {
-		return (Object) this instanceof PathfinderMob mob && ActionManager.isControlled(mob);
+		return (Object) this instanceof PathfinderMob mob && ActionManager.pausesVanillaAi(mob);
 	}
 }

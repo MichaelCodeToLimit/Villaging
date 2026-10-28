@@ -24,6 +24,11 @@ public final class ActionManager {
 	private ActionManager() {
 	}
 
+	/** True while vanilla AI must stay quiet: an order or script is running, or the king has the chat box open with it. */
+	public static boolean pausesVanillaAi(PathfinderMob villager) {
+		return isControlled(villager) || TalkHold.holds(villager) || ScriptManager.INSTANCE.isRunning(villager);
+	}
+
 	public static boolean isControlled(PathfinderMob villager) {
 		return INSTANCE.running.containsKey(villager.getUUID());
 	}

@@ -3,7 +3,7 @@
 	"id": "villaging",
 	"version": "${version}",
 	"name": "Villaging",
-	"description": "Smart AI villagers that serve the king and can do anything a player can.",
+	"description": "Turn villagers and iron and copper golems into smart AI helpers you command in plain words. You are the king: they mine, build, farm, craft, fight, recruit more helpers and chat with you.",
 	"authors": ["micha"],
 	"license": "MIT",
 	"icon": "assets/villaging/icon.png",

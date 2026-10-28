@@ -118,7 +118,7 @@ public final class VillagingRuntime implements CommandService.Backend {
 			case REJECTED_NOT_SMART -> "That villager is not smart. Use the crown on it first.";
 			case REJECTED_TOO_FAR -> "You are too far from that villager.";
 			case REJECTED_BAD_MESSAGE -> "Say something between 1 and " + CommandService.MAX_MESSAGE_LENGTH + " characters.";
-			case REJECTED_RATE_LIMITED -> "Please wait a moment; this villager is thinking too often.";
+			case REJECTED_RATE_LIMITED -> "Easy, my king, I am still working on your last words. Give me a moment.";
 			case DISABLED_BAD_CONFIG -> "Smart villagers are disabled: " + configProblem;
 		};
 	}

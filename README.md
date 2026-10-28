@@ -48,16 +48,23 @@ If the config is missing a key, the mod still loads and tells you what to fix wh
 
 ## Playing
 
-1. **Sneak + right-click any villager** and type. Press Enter to send, Escape to cancel. The first thing you say to
-   an ordinary villager makes it smart (it gets a name), and if the world has no king yet you become king.
+0. The first time you join a world, a **guide** explains everything. Reopen it with `/villaging guide`.
+1. **Sneak + right-click an ordinary villager** and type. Press Enter to send, Escape to cancel. The first thing you
+   say makes it smart (it gets a name), and if the world has no king yet you become king. After that a plain
+   **right-click** on a smart villager or golem opens the chat; sneak + right-click gives vanilla trading (or lets you
+   heal a golem with an iron ingot).
 2. Or craft the **Crown of the King** (`GGG / GDG`, G = gold ingot, D = diamond): use it in the air to claim the
    throne (one king per world), and on a villager to make it smart.
-3. **Rename:** "your name is Garrick", or "rename Bob to Odo". **Recruit:** "recruit two more villagers"; you are
+3. **Golems:** tell a smart villager "recruit the iron golem" (or copper golem). The golem gets a name, obeys orders
+   with the same abilities, and while it works its own behaviour (patrolling, sorting items) pauses.
+4. **Rename:** "your name is Garrick", or "rename Bob to Odo". **Recruit:** "recruit two more villagers"; you are
    asked to approve, and up to 5 ordinary villagers within 32 blocks become smart (they are chosen instantly, not
    walked to). **Your title:** "call me Boss" (everyone) or "you call me Sire" (only that villager). Default: King.
 
 Talk normally: slang, typos, other languages, "mine that block" (the block you are looking at), questions.
-If it cannot do something yet it says so and offers the closest thing.
+A villager stands still while you talk, and the chat window stays open so you can keep a full conversation. If the AI
+service is slow or busy, the villager keeps trying and tells you it is working on it; it never just gives up.
+The Crown is also in the creative inventory under Tools & Utilities.
 
 ### What villagers can do
 

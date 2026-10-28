@@ -1,6 +1,7 @@
 package com.villaging;
 
 import com.villaging.king.CrownItem;
+import net.fabricmc.fabric.api.creativetab.v1.CreativeModeTabEvents;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
@@ -19,5 +20,9 @@ public final class ModItems {
 	}
 
 	public static void init() {
+		// The crown is in the creative inventory, under Tools & Utilities.
+		CreativeModeTabEvents.modifyOutputEvent(
+				ResourceKey.create(Registries.CREATIVE_MODE_TAB, Identifier.withDefaultNamespace("tools_and_utilities")))
+				.register(output -> output.accept(CROWN));
 	}
 }

@@ -17,6 +17,7 @@ import com.villaging.villager.FollowAction;
 import com.villaging.villager.GoToAction;
 import com.villaging.villager.HandsManager;
 import com.villaging.villager.MinecraftActionExecutor;
+import com.villaging.villager.TalkHold;
 import com.villaging.villager.ToolHandlers;
 import com.villaging.villager.VillagerHands;
 import com.villaging.villager.MineAction;
@@ -85,12 +86,15 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 					? "{\"provider\":\"gemini\",\"apiKey\":\"" + geminiKey + "\",\"callsPerMinute\":100}"
 					: "{\"provider\":\"ollama\",\"ollamaModel\":\"" + realModel + "\",\"callsPerMinute\":100}";
 			Files.writeString(FabricLoader.getInstance().getConfigDir().resolve("villaging.json"), config);
+			// A new player has never seen the guide: it must open by itself on joining the world (checked first below).
+			Files.deleteIfExists(FabricLoader.getInstance().getConfigDir().resolve("villaging-client.json"));
 		} catch (IOException e) {
 			throw new RuntimeException(e);
 		}
 
 		try (TestSingleplayerContext world = context.worldBuilder().create()) {
 			TestServerContext server = world.getServer();
+			attempt("the guide opens by itself the first time, pages turn, and it is remembered", () -> guideFirstRun(context, server));
 			prepareArena(server);
 			if (realModel != null) {
 				attempt("real model understands free-form phrasing", () -> realModel(context, server));
@@ -118,7 +122,7 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 			attempt("allowBreakBedrock lets a villager break bedrock like a creative player", () -> mineBedrockAllowed(server));
 			attempt("respectProtection=false skips protection checks", () -> mineVetoIgnored(server));
 			attempt("speech bubble text never stays as the villager name", () -> bubbleRestored(server));
-			attempt("sneak-click on a smart villager opens the chat screen", () -> sneakClick(context, server));
+			attempt("right-click on a smart villager opens the chat screen", () -> sneakClick(context, server));
 			attempt("typing in the chat screen drives the villager end to end", () -> endToEnd(context, server));
 			attempt("ask opens the dialog and an option button answers the model", () -> askRound(context, server, "Left", c -> c.runOnClient(mc -> ((AskScreen) mc.gui.screen()).choose("Left")), "ok: the king answered \"Left\""));
 			attempt("ask accepts the king's own typed answer", () -> askRound(context, server, "Burn it all", c -> { c.getInput().typeChars("Burn it all"); c.getInput().pressKey(GLFW.GLFW_KEY_ENTER); }, "ok: the king answered \"Burn it all\""));
@@ -157,9 +161,12 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 			attempt("sneak-click opens the chat on an ordinary villager", () -> sneakClickOnAnOrdinaryVillager(context, server));
 			attempt("rename and the king's title reach the villager and the prompt", () -> renameAndKingTitle(context, server));
 			attempt("recruit asks the king and makes the nearest villagers smart", () -> recruiting(context, server));
+			attempt("a click opens the full chat with history and the villager stands still", () -> talkingHoldsTheVillagerStill(context, server));
+			attempt("the chat hold never blocks an order", () -> aHoldNeverInterruptsAnOrder(context, server));
+			attempt("the crown is in the creative inventory", () -> crownIsInTheCreativeInventory(context));
 			attempt("recruit makes iron and copper golems smart", () -> recruitingGolems(context, server));
 			attempt("smart golems obey orders and know what they are", () -> smartGolemsObey(context, server));
-			attempt("sneak-click talks to a smart golem but leaves ordinary ones alone", () -> golemClicks(context, server));
+			attempt("a click talks to a smart golem but leaves ordinary ones alone", () -> golemClicks(context, server));
 			attempt("the key box opens with /villaging key and saves the key", () -> keyBox(context, server));
 		} finally {
 			ollama.close();
@@ -1346,7 +1353,7 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 			p.setShiftKeyDown(false);
 			return UseEntityCallback.EVENT.invoker().interact(p, p.level(), InteractionHand.MAIN_HAND, v, null);
 		});
-		require(plain == InteractionResult.PASS, "ordinary click should keep vanilla behavior, got " + plain);
+		require(plain == InteractionResult.SUCCESS_SERVER, "a plain right-click on a smart villager should open the chat, got " + plain);
 		InteractionResult sneaking = server.computeOnServer(srv -> {
 			ServerPlayer p = srv.getPlayerList().getPlayers().get(0);
 			p.setShiftKeyDown(true);
@@ -1354,7 +1361,7 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 			p.setShiftKeyDown(false);
 			return r;
 		});
-		require(sneaking == InteractionResult.SUCCESS_SERVER, "sneak-click should be handled, got " + sneaking);
+		require(sneaking == InteractionResult.PASS, "sneak-click on a smart villager should leave trading to vanilla, got " + sneaking);
 		context.waitForScreen(VillagerChatScreen.class);
 		context.runOnClient(mc -> mc.gui.setScreen(null));
 	}
@@ -1388,7 +1395,13 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 		require(brain.memory().contains("king: please walk to the spot six blocks east"), "memory missing king line: " + brain.memory());
 		require(brain.memory().contains("me: I have arrived, my king."), "memory missing reply: " + brain.memory());
 		require(server.computeOnServer(srv -> v.getCustomName() != null), "villager should show a name or bubble");
+		// The screen stays open for the whole conversation and shows both sides of it.
+		context.waitFor(mc -> mc.gui.screen() instanceof VillagerChatScreen chat
+				&& chat.transcript().contains("Alma: I have arrived, my king."));
+		List<String> shown = context.computeOnClient(mc -> ((VillagerChatScreen) mc.gui.screen()).transcript());
+		require(shown.contains("You: please walk to the spot six blocks east"), "the king's line is missing on screen: " + shown);
 		context.takeScreenshot("villaging-after-walk");
+		context.runOnClient(mc -> mc.gui.setScreen(null));
 	}
 
 	/** Opt-in (VILLAGING_REAL_MODEL=<ollama model>): sends varied phrasings to a real model and logs what happened. */
@@ -1549,6 +1562,74 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 		require(server.computeOnServer(srv -> !VillagerBrains.get(a).name().equalsIgnoreCase(VillagerBrains.get(b).name())), "recruits share a name");
 	}
 
+	private void talkingHoldsTheVillagerStill(ClientGameTestContext context, TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager v = spawnVillager(server, 5, 100, 0);
+		server.runOnServer(srv -> VillagerBrains.set(v, VillagerBrain.DEFAULT.makeSmart("Alma")
+				.withMemory("king: hi").withMemory("me: Greetings, King.")));
+		// A plain right-click opens the full chat, with the saved conversation, and the villager stops.
+		InteractionResult clicked = server.computeOnServer(srv -> {
+			ServerPlayer p = srv.getPlayerList().getPlayers().get(0);
+			p.setShiftKeyDown(false);
+			return UseEntityCallback.EVENT.invoker().interact(p, p.level(), InteractionHand.MAIN_HAND, v, null);
+		});
+		require(clicked == InteractionResult.SUCCESS_SERVER, "the click did not open the chat: " + clicked);
+		context.waitForScreen(VillagerChatScreen.class);
+		List<String> shown = context.computeOnClient(mc -> ((VillagerChatScreen) mc.gui.screen()).transcript());
+		require(shown.equals(List.of("You: hi", "Alma: Greetings, King.")), "the history is not shown: " + shown);
+		require(server.computeOnServer(srv -> TalkHold.holds(v) && ActionManager.pausesVanillaAi(v)), "the villager is not held");
+		// Something tries to send it walking (like its own wandering would); the hold stops it.
+		Vec3 start = server.computeOnServer(srv -> {
+			v.getNavigation().moveTo(14.0, 100.0, 0.0, 1.0);
+			return v.position();
+		});
+		waitTicks(server, 80);
+		double moved = server.computeOnServer(srv -> v.position().distanceTo(start));
+		require(moved < 1.0, "the villager walked away while being talked to: " + moved);
+		require(server.computeOnServer(srv -> v.getNavigation().isDone()), "the villager is still trying to walk");
+		// Closing the chat lets it go again.
+		context.runOnClient(mc -> mc.gui.setScreen(null));
+		server.waitFor(srv -> !TalkHold.holds(v), 100);
+		require(!server.computeOnServer(srv -> TalkHold.holds(v)), "the hold was not released");
+	}
+
+	private void aHoldNeverInterruptsAnOrder(ClientGameTestContext context, TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager v = spawnVillager(server, 0, 100, 0);
+		server.runOnServer(srv -> VillagerBrains.set(v, VillagerBrain.DEFAULT.makeSmart("Alma")));
+		server.runOnServer(srv -> TalkHold.start(v, playerId(server)));
+		String result = awaitResult(server, startAction(server, v, new GoToAction(8, 100, 0.5)), 900);
+		require(result.equals("ok: arrived"), "an order was blocked by the chat hold: " + result);
+		server.runOnServer(srv -> TalkHold.release(v));
+	}
+
+	private void crownIsInTheCreativeInventory(ClientGameTestContext context) {
+		boolean found = context.computeOnClient(mc -> {
+			net.minecraft.world.item.CreativeModeTabs.tryRebuildTabContents(mc.level.enabledFeatures(), true, mc.level.registryAccess());
+			return net.minecraft.core.registries.BuiltInRegistries.CREATIVE_MODE_TAB.stream()
+					.anyMatch(tab -> tab.getDisplayItems().stream().anyMatch(s -> s.is(ModItems.CROWN)));
+		});
+		require(found, "the crown is not in the creative inventory");
+	}
+
+	private void guideFirstRun(ClientGameTestContext context, TestServerContext server) throws Exception {
+		context.waitForScreen(com.villaging.client.GuideScreen.class);
+		context.takeScreenshot("villaging-guide-first");
+		int pages = com.villaging.guide.GuideContent.pages().size();
+		context.runOnClient(mc -> ((com.villaging.client.GuideScreen) mc.gui.screen()).goToPage(pages - 1));
+		context.takeScreenshot("villaging-guide-last");
+		context.runOnClient(mc -> mc.gui.screen().onClose());
+		context.waitFor(mc -> mc.gui.screen() == null);
+		java.nio.file.Path flag = FabricLoader.getInstance().getConfigDir().resolve("villaging-client.json");
+		require(Files.exists(flag) && Files.readString(flag).contains("true"), "the guide was not remembered");
+		// It does not come back by itself, but the command opens it again.
+		server.runCommand("execute as @p run villaging guide");
+		context.waitForScreen(com.villaging.client.GuideScreen.class);
+		context.runOnClient(mc -> mc.gui.setScreen(null));
+	}
+
 	private static PathfinderMob spawnMob(TestServerContext server, String type, double x, double y, double z) {
 		server.runCommand("summon minecraft:" + type + " " + x + " " + y + " " + z);
 		return server.computeOnServer(srv -> {
@@ -1636,12 +1717,12 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 		server.runOnServer(srv -> VillagerBrains.set(golem, VillagerBrain.DEFAULT.makeSmart("Rex")));
 		InteractionResult smart = server.computeOnServer(srv -> {
 			ServerPlayer p = srv.getPlayerList().getPlayers().get(0);
-			p.setShiftKeyDown(true);
+			p.setShiftKeyDown(false);
 			InteractionResult r = UseEntityCallback.EVENT.invoker().interact(p, p.level(), InteractionHand.MAIN_HAND, golem, null);
 			p.setShiftKeyDown(false);
 			return r;
 		});
-		require(smart == InteractionResult.SUCCESS_SERVER, "sneak-click on a smart golem was not handled: " + smart);
+		require(smart == InteractionResult.SUCCESS_SERVER, "a plain click on a smart golem was not handled: " + smart);
 		context.waitForScreen(VillagerChatScreen.class);
 		context.runOnClient(mc -> mc.gui.setScreen(null));
 	}

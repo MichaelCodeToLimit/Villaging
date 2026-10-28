@@ -20,9 +20,17 @@ import java.util.function.LongConsumer;
  * or the loop is cancelled.
  */
 public final class AgentLoop {
-	public static final String CANT_THINK = "I can't think right now.";
+	/** Said once when the AI is slow or busy and the villager keeps trying. Never a refusal. */
+	public static final String WAITING = "One moment, my king, I'm thinking it over.";
+	/** Said only after the villager has waited and retried for a long while. Still not a refusal. */
+	public static final String STILL_THINKING = "I'm still gathering my thoughts, my king. Say it once more in a moment and I'll get right on it.";
 	public static final String NO_ANSWER = "I'm not sure what to say, my king.";
-	public static final String TOO_BUSY = "Give me a moment to catch my breath.";
+	/** Tries per model call: the first, then four more after growing waits. */
+	private static final int MAX_ATTEMPTS = 5;
+	private static final long[] RETRY_WAIT_FACTORS = {1, 3, 8, 20};
+	/** When the call limit is reached the villager waits for a slot this many times before giving up politely. */
+	private static final int MAX_PERMIT_WAITS = 12;
+	private static final long PERMIT_WAIT_FACTOR = 4;
 	private static final long DEFAULT_TOOL_TIMEOUT_SECONDS = 120;
 	private static final long RETRY_DELAY_MILLIS = 1500;
 
@@ -91,7 +99,7 @@ public final class AgentLoop {
 		private final Consumer<List<ChatMessage>> onFinished;
 		private volatile boolean cancelled;
 		private volatile CompletableFuture<String> pending;
-		private boolean denied;
+		private boolean waitingSaid;
 		private boolean acted;
 
 		Run(String system, List<ChatMessage> history, String userMessage, ActionExecutor exec,
@@ -123,7 +131,7 @@ public final class AgentLoop {
 						break;
 					}
 					if (response == null) {
-						reply(denied ? TOO_BUSY : CANT_THINK);
+						reply(STILL_THINKING);
 						break;
 					}
 					if (!response.text().isBlank()) {
@@ -149,7 +157,7 @@ public final class AgentLoop {
 			} catch (RuntimeException e) {
 				Villaging.LOGGER.error("Villager agent loop crashed", e);
 				if (!cancelled) {
-					reply(CANT_THINK);
+					reply(STILL_THINKING);
 				}
 			} finally {
 				onFinished.accept(List.copyOf(produced));
@@ -161,12 +169,36 @@ public final class AgentLoop {
 			onReply.accept(text);
 		}
 
+		/** Waits (a few times) for the call limit to open up; false when it never does or the run was cancelled. */
+		private boolean awaitPermit() {
+			for (int waits = 0; !callPermit.getAsBoolean(); waits++) {
+				if (cancelled || waits >= MAX_PERMIT_WAITS) {
+					return false;
+				}
+				if (waits == 0) {
+					announceWaiting();
+				}
+				sleeper.accept(retryDelayMillis * PERMIT_WAIT_FACTOR);
+			}
+			return true;
+		}
+
+		private void announceWaiting() {
+			if (!waitingSaid) {
+				waitingSaid = true;
+				reply(WAITING);
+			}
+		}
+
+		/**
+		 * Asks the model, patiently: a busy or failing AI is retried after growing waits instead of giving up, and the
+		 * king is told once that the villager is thinking it over. Null only after all that, or when cancelled.
+		 */
 		private AiResponse callProvider(List<ChatMessage> produced) {
 			List<ChatMessage> messages = new ArrayList<>(history);
 			messages.addAll(produced);
-			for (int attempt = 0; attempt < 2; attempt++) {
-				if (!callPermit.getAsBoolean()) {
-					denied = true;
+			for (int attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+				if (!awaitPermit()) {
 					return null;
 				}
 				try {
@@ -174,12 +206,13 @@ public final class AgentLoop {
 				} catch (AiException | RuntimeException e) {
 					Villaging.LOGGER.warn("AI call failed (attempt {}): {}", attempt + 1, e.getMessage());
 				}
-				if (cancelled) {
+				if (cancelled || attempt == MAX_ATTEMPTS - 1) {
 					return null;
 				}
-				if (attempt == 0) {
-					sleeper.accept(retryDelayMillis);
+				if (attempt == 1) {
+					announceWaiting();
 				}
+				sleeper.accept(retryDelayMillis * RETRY_WAIT_FACTORS[attempt]);
 			}
 			return null;
 		}

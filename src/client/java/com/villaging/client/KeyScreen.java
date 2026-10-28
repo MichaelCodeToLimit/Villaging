@@ -75,6 +75,16 @@ public class KeyScreen extends Screen {
 	}
 
 	@Override
+	public void onClose() {
+		Minecraft client = this.minecraft;
+		super.onClose();
+		// A first-time player who got the key box before the guide still gets the guide afterwards.
+		if (client != null) {
+			VillagingClient.maybeShowGuide(client);
+		}
+	}
+
+	@Override
 	public boolean keyPressed(KeyEvent event) {
 		if (event.isConfirmation()) {
 			save();
