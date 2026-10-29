@@ -13,3 +13,9 @@ Just say it normally. Examples:
 Safety: lava, fire, TNT and wrecking big areas always ask you first in a pop-up. Helpers never hurt players or pets.
 
 Not yet: enchanting and anvils, building from blueprints, ranks.
+
+## Commands
+
+- `/announcements <message>`: speak to every helper within 64 blocks at once (up to 12). They answer one after another, 1.5 seconds apart. King only.
+- `/villaging summon <name>`: bring one helper to your side. A start of the name is enough. King only, and it needs no AI.
+- `/villaging key` opens the AI key box and `/villaging guide` opens the guide.

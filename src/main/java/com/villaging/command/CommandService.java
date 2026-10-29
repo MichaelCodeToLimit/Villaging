@@ -47,10 +47,15 @@ public final class CommandService {
 	}
 
 	public CommandResult handle(UUID player, int villagerId, String message) {
+		return handle(player, villagerId, message, MAX_DISTANCE);
+	}
+
+	/** Like {@link #handle(UUID, int, String)} but the helper may be up to {@code maxDistance} blocks away (announcements). */
+	public CommandResult handle(UUID player, int villagerId, String message, int maxDistance) {
 		if (!backend.isKing(player)) {
 			return CommandResult.REJECTED_NOT_KING;
 		}
-		switch (backend.villagerStatus(player, villagerId, MAX_DISTANCE)) {
+		switch (backend.villagerStatus(player, villagerId, maxDistance)) {
 			case NOT_SMART -> {
 				return CommandResult.REJECTED_NOT_SMART;
 			}
@@ -75,6 +80,14 @@ public final class CommandService {
 			previous.cancel();
 		}
 		return CommandResult.ACCEPTED;
+	}
+
+	/** Stops the plan this helper is working on (summoning it interrupts what it was doing). */
+	public void cancel(int villagerId) {
+		AgentLoop.Handle handle = running.remove(villagerId);
+		if (handle != null) {
+			handle.cancel();
+		}
 	}
 
 	public void cancelAll() {

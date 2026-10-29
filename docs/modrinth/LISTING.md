@@ -86,6 +86,16 @@ Fixes and improvements.
 - Clear messages when the AI service has run out of free usage (quota) or rejects your key, instead of retrying for a minute.
 ```
 
+## Version 1.0.2 (update)
+
+File: `build/libs/villaging-1.0.2.jar`. Same loader, game version and Fabric API dependency.
+
+```markdown
+New commands.
+- `/announcements <message>` speaks to every smart villager and golem within 64 blocks at once (up to 12, asked one after another so the AI service is not flooded). King only.
+- `/villaging summon <name>` brings one helper to your side and stops what it was doing. A start of the name is enough, and it needs no AI. King only.
+```
+
 ## Before you upload (checklist)
 - [x] License: MIT everywhere (done).
 - [x] Automated checks: unit tests and the in-game suite (65 checks) pass on the release jar's code.

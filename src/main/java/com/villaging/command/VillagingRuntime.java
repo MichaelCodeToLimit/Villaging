@@ -76,6 +76,16 @@ public final class VillagingRuntime implements CommandService.Backend {
 		return service.handle(player.getUUID(), villagerId, message);
 	}
 
+	/** An announcement to one helper: like a spoken order, but the helper may be anywhere in the announcement range. */
+	public CommandResult handleAnnouncement(ServerPlayer player, int villagerId, String message) {
+		return service.handle(player.getUUID(), villagerId, message, HelperCommands.ANNOUNCE_RANGE);
+	}
+
+	/** Stops the plan the helper is working on (summoning it breaks off whatever it was doing). */
+	public void interrupt(int villagerId) {
+		service.cancel(villagerId);
+	}
+
 	public VillagingConfig config() {
 		return config;
 	}

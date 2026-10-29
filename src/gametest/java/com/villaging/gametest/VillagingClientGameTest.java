@@ -160,6 +160,8 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 			attempt("review: no shooting through the king", () -> reviewLineOfFire(server));
 			attempt("end to end: one order becomes a script that builds a chest", () -> getLogsAndMakeAChest(context, server));
 			attempt("selecting, copying and pasting text in the chat screen", () -> chatSelectCopyPaste(context, server));
+			attempt("/announcements reaches every nearby helper, one at a time, and only for the king", () -> announcements(context, server));
+			attempt("/villaging summon brings the named helper to the king and never guesses", () -> summonByName(context, server));
 			attempt("a command from a non-king is ignored", () -> forgedPacket(context, server));
 			attempt("speaking to an ordinary villager makes it smart (and the speaker king)", () -> speakingToAnOrdinaryVillager(context, server));
 			attempt("sneak-click opens the chat on an ordinary villager", () -> sneakClickOnAnOrdinaryVillager(context, server));
@@ -1411,6 +1413,74 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 		require(shown.contains("You: please walk to the spot six blocks east"), "the king's line is missing on screen: " + shown);
 		context.takeScreenshot("villaging-after-walk");
 		context.runOnClient(mc -> mc.gui.setScreen(null));
+	}
+
+	private static Villager smartVillager(TestServerContext server, String name, double x, double y, double z) {
+		Villager v = spawnVillager(server, x, y, z);
+		server.runOnServer(srv -> VillagerBrains.set(v, VillagerBrain.DEFAULT.makeSmart(name)));
+		return v;
+	}
+
+	private void announcements(ClientGameTestContext context, TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		smartVillager(server, "Alma", 6, 100, 0);
+		smartVillager(server, "Bob", -6, 100, 0);
+		smartVillager(server, "Cleo", 0, 100, 8);
+		ollama.script(
+				"{\"message\":{\"role\":\"assistant\",\"content\":\"Heard, my king.\"}}",
+				"{\"message\":{\"role\":\"assistant\",\"content\":\"Heard, my king.\"}}",
+				"{\"message\":{\"role\":\"assistant\",\"content\":\"Heard, my king.\"}}");
+		server.runCommand("execute as @p run announcements gather at the well");
+		server.waitFor(srv -> ollama.requests.size() >= 3, 600);
+		require(ollama.requests.size() == 3, "all three helpers should hear it, saw " + ollama.requests.size() + " requests");
+		String all = String.join("\n", ollama.requests);
+		for (String request : ollama.requests) {
+			require(request.contains("gather at the well") && request.contains("speaks to all helpers"),
+					"a helper did not get the announcement text");
+		}
+		require(all.contains("Alma") && all.contains("Bob") && all.contains("Cleo"), "every helper should be asked in its own name");
+
+		// Only the king may announce.
+		noKing(server);
+		ollama.script("{\"message\":{\"role\":\"assistant\",\"content\":\"Should not happen.\"}}");
+		server.runCommand("execute as @p run announcements hello");
+		context.waitTicks(90);
+		require(ollama.requests.isEmpty(), "a player who is not king must not be able to announce, saw " + ollama.requests.size());
+	}
+
+	private void summonByName(ClientGameTestContext context, TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager alma = smartVillager(server, "Alma", 12, 100, 12);
+		Villager bob = smartVillager(server, "Bob", -12, 100, -6);
+		Villager bobbi = smartVillager(server, "Bobbi", -12, 100, 12);
+		require(distance(server, alma, 0, 100, 2) > 10, "Alma should start far away");
+
+		// Two helpers start with "bo": nobody is moved and the king is asked which one.
+		server.runCommand("execute as @p run villaging summon bo");
+		context.waitTicks(10);
+		require(distance(server, bob, 0, 100, 2) > 10 && distance(server, bobbi, 0, 100, 2) > 10, "an ambiguous name must not move anyone");
+
+		// An unknown name moves nobody.
+		server.runCommand("execute as @p run villaging summon Zed");
+		context.waitTicks(10);
+		require(distance(server, alma, 0, 100, 2) > 10, "an unknown name must not move anyone");
+
+		// A full name picks one even though it also starts another name.
+		server.runCommand("execute as @p run villaging summon bob");
+		server.waitFor(srv -> bob.position().distanceTo(new Vec3(0, 100, 2)) < 4, 60);
+		require(distance(server, bobbi, 0, 100, 2) > 10, "summoning Bob must leave Bobbi where she is");
+
+		// A start of a name that fits one helper is enough, and it works while the AI is unusable.
+		server.runCommand("execute as @p run villaging summon al");
+		server.waitFor(srv -> alma.position().distanceTo(new Vec3(0, 100, 2)) < 4, 60);
+
+		// Only the king may summon.
+		noKing(server);
+		server.runCommand("execute as @p run villaging summon bobbi");
+		context.waitTicks(10);
+		require(distance(server, bobbi, 0, 100, 2) > 10, "a player who is not king must not be able to summon");
 	}
 
 	private void chatSelectCopyPaste(ClientGameTestContext context, TestServerContext server) throws Exception {

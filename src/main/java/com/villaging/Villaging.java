@@ -1,6 +1,7 @@
 package com.villaging;
 
 import com.villaging.command.CommandService.CommandResult;
+import com.villaging.command.HelperCommands;
 import com.villaging.command.VillagingRuntime;
 import com.villaging.config.VillagingConfig;
 import com.villaging.king.ClickRule;
@@ -104,6 +105,7 @@ public class Villaging implements ModInitializer {
 				ServerPlayNetworking.send(handler.getPlayer(), new OpenKeyPayload(current.config().provider()));
 			}
 		});
+		CommandRegistrationCallback.EVENT.register((dispatcher, buildContext, selection) -> HelperCommands.register(dispatcher));
 		CommandRegistrationCallback.EVENT.register((dispatcher, buildContext, selection) ->
 				dispatcher.register(Commands.literal("villaging").then(Commands.literal("key").executes(context -> {
 					ServerPlayer player = context.getSource().getPlayerOrException();
@@ -138,11 +140,13 @@ public class Villaging implements ModInitializer {
 			ScriptManager.INSTANCE.cancelAll();
 			VillagerSpeech.clear();
 			TalkHold.clear();
+			HelperCommands.clear();
 		});
 		ServerTickEvents.END_LEVEL_TICK.register(ActionManager.INSTANCE::tick);
 		ServerTickEvents.END_SERVER_TICK.register(server -> {
 			VillagerSpeech.tick();
 			TalkHold.tick(server);
+			HelperCommands.tick(server);
 			PendingQuestions.INSTANCE.expire(System.nanoTime());
 		});
 

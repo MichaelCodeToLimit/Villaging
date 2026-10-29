@@ -66,6 +66,17 @@ A villager stands still while you talk, and the chat window stays open so you ca
 service is slow or busy, the villager keeps trying and tells you it is working on it; it never just gives up.
 The Crown is also in the creative inventory under Tools & Utilities.
 
+### Commands
+
+| Command | What it does |
+|---|---|
+| `/announcements <message>` | Speaks to every smart villager and golem within 64 blocks at once (up to 12, one every 1.5 seconds so the AI service is not flooded). Each answers in its own name. King only. |
+| `/villaging summon <name>` | Brings one helper to your side and stops what it was doing. A start of its name is enough (`al` finds Alma); if two names match it lists them. Needs no AI. King only. |
+| `/villaging key` | Opens the AI key box. |
+| `/villaging guide` | Opens the first-time guide. |
+
+(Minecraft has its own `/summon` for spawning mobs, so the helper command lives under `/villaging`.)
+
 ### What villagers can do
 
 - **Look:** `look_around`, `look_at`, `check_inventory`.

@@ -18,6 +18,7 @@ class CommandServiceTest {
 		UUID king = UUID.randomUUID();
 		VillagerStatus status = VillagerStatus.OK;
 		String configProblem = "";
+		int lastMaxDistance;
 		final List<String> started = new ArrayList<>();
 		final List<AtomicInteger> cancelCounts = new ArrayList<>();
 
@@ -28,6 +29,7 @@ class CommandServiceTest {
 
 		@Override
 		public VillagerStatus villagerStatus(UUID player, int villagerId, int maxDistance) {
+			lastMaxDistance = maxDistance;
 			return status;
 		}
 
@@ -53,6 +55,23 @@ class CommandServiceTest {
 	void kingCommandIsAccepted() {
 		assertEquals(CommandResult.ACCEPTED, service.handle(backend.king, 7, "follow me"));
 		assertEquals(List.of("7:follow me"), backend.started);
+	}
+
+	@Test
+	void anAnnouncementCanReachFartherThanASpokenOrder() {
+		assertEquals(CommandResult.ACCEPTED, service.handle(backend.king, 7, "everyone gather", 64));
+		assertEquals(64, backend.lastMaxDistance);
+		service.handle(backend.king, 8, "follow me");
+		assertEquals(CommandService.MAX_DISTANCE, backend.lastMaxDistance);
+	}
+
+	@Test
+	void cancellingAHelperStopsItsRunningLoopOnly() {
+		service.handle(backend.king, 7, "mine");
+		service.handle(backend.king, 8, "chop");
+		service.cancel(7);
+		assertEquals(1, backend.cancelCounts.get(0).get());
+		assertEquals(0, backend.cancelCounts.get(1).get());
 	}
 
 	@Test

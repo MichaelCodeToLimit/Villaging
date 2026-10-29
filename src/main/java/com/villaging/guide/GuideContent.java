@@ -76,7 +76,9 @@ public final class GuideContent {
 							+ "turn it on in config/villaging.json."),
 			new Page("Commands and settings",
 					"/villaging key: change your AI key or AI choice.\n"
-							+ "/villaging guide: open this guide again.\n\n"
+							+ "/villaging guide: open this guide again.\n"
+							+ "/announcements <message>: speak to every helper near you at once.\n"
+							+ "/villaging summon <name>: call one helper to your side.\n\n"
 							+ "Settings live in config/villaging.json: call limits, how far orders reach, protection and "
 							+ "script limits.\n\n"
 							+ "Coming later: building from blueprints and ranks. Have fun, King!"));
