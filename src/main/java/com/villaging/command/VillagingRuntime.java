@@ -26,7 +26,6 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.network.chat.Component;
@@ -168,21 +167,16 @@ public final class VillagingRuntime implements CommandService.Backend {
 		MinecraftActionExecutor executor = new MinecraftActionExecutor(server, villager, player, config);
 		RateLimiter limiter = modelCallLimiters.computeIfAbsent(villager.getUUID(),
 				id -> new RateLimiter(config.callsPerMinute(), System::nanoTime));
-		AtomicBoolean cancelled = new AtomicBoolean();
 
 		AgentLoop.Handle inner = new AgentLoop(provider, config.maxSteps(), limiter::tryAcquire)
 				.withToolTimeout(Math.max(120, config.maxScriptSeconds()) + 30L).start(system, history,
 				message, executor,
 				reply -> server.execute(() -> VillagerSpeech.say(server, villager, player, reply)),
-				produced -> server.execute(() -> {
-					if (!villager.isRemoved()) {
-						VillagerBrains.set(villager,
-								Conversation.withReplies(VillagerBrains.get(villager), produced, cancelled.get()));
-					}
-				}),
+				// Spoken lines are remembered by VillagerSpeech.say as they are said, so nothing is stored here.
+				produced -> {
+				},
 				aiThreads);
 		return () -> {
-			cancelled.set(true);
 			inner.cancel();
 		};
 	}

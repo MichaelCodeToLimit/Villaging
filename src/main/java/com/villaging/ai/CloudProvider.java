@@ -16,7 +16,7 @@ public final class CloudProvider implements AiProvider {
 	private final Duration timeout;
 
 	public CloudProvider(String baseUrl, String apiKey, String model) {
-		this(baseUrl, apiKey, model, Duration.ofSeconds(30));
+		this(baseUrl, apiKey, model, Duration.ofSeconds(25));
 	}
 
 	public CloudProvider(String baseUrl, String apiKey, String model, Duration timeout) {

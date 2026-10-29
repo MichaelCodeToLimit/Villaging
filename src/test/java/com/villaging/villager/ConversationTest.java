@@ -37,34 +37,28 @@ class ConversationTest {
 	}
 
 	@Test
-	void finishedRunStoresOnlyNonBlankAssistantText() {
-		List<ChatMessage> produced = List.of(
-				ChatMessage.user("hi"),
-				ChatMessage.assistant("", List.of()),
-				ChatMessage.assistant("Hello, my king.", List.of()));
-		VillagerBrain brain = Conversation.withReplies(SMART, produced, false);
-		assertEquals(List.of("me: Hello, my king."), brain.memory());
+	void aSpokenLineIsRememberedTheMomentItIsSaid() {
+		VillagerBrain brain = Conversation.withVillagerLine(Conversation.withKingMessage(SMART, "hi"), "Hello, my king.");
+		assertEquals(List.of("king: hi", "me: Hello, my king."), brain.memory());
 	}
 
 	@Test
-	void wordsSpokenThroughTheSayToolAreRemembered() {
-		com.google.gson.JsonObject args = new com.google.gson.JsonObject();
-		args.addProperty("text", "Right away, my king!");
-		List<ChatMessage> produced = List.of(
-				ChatMessage.user("mine that"),
-				ChatMessage.assistant("", List.of(
-						new com.villaging.ai.ToolCall("1", "say", args),
-						new com.villaging.ai.ToolCall("2", "mine_block", new com.google.gson.JsonObject()))));
-		VillagerBrain brain = Conversation.withReplies(SMART, produced, false);
-		assertEquals(List.of("me: Right away, my king!"), brain.memory());
+	void aLineSpokenWhileANewerCommandIsPendingIsStillKept() {
+		VillagerBrain brain = Conversation.withKingMessage(Conversation.withKingMessage(SMART, "A"), "B");
+		VillagerBrain result = Conversation.withVillagerLine(brain, "late reply to A");
+		assertTrue(result.memory().contains("me: late reply to A"));
 	}
 
 	@Test
-	void cancelledRunNeverWritesAReplyAfterTheNewerCommand() {
-		VillagerBrain afterNewCommand = Conversation.withKingMessage(Conversation.withKingMessage(SMART, "A"), "B");
-		List<ChatMessage> producedByCancelledA = List.of(ChatMessage.user("A"), ChatMessage.assistant("late reply to A", List.of()));
-		VillagerBrain result = Conversation.withReplies(afterNewCommand, producedByCancelledA, true);
-		assertEquals(afterNewCommand, result);
-		assertTrue(result.memory().indexOf("king: B") > result.memory().indexOf("king: A"));
+	void blankSpeechIsNotRemembered() {
+		assertEquals(SMART, Conversation.withVillagerLine(SMART, "   "));
+	}
+
+	@Test
+	void whatTheVillagerSaidShowsUpInTheChatScreenHistory() {
+		VillagerBrain brain = Conversation.withVillagerLine(Conversation.withKingMessage(SMART, "hi"), "Hello.");
+		List<ChatTranscript.Line> lines = ChatTranscript.parse(brain.memory());
+		assertEquals(2, lines.size());
+		assertEquals(false, lines.get(1).fromKing());
 	}
 }

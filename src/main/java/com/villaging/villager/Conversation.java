@@ -29,27 +29,11 @@ public final class Conversation {
 		return brain.withMemory(KING_PREFIX + message);
 	}
 
-	/** A cancelled run was superseded by a newer command, so its replies are dropped. */
-	public static VillagerBrain withReplies(VillagerBrain brain, List<ChatMessage> produced, boolean cancelled) {
-		if (cancelled) {
-			return brain;
-		}
-		VillagerBrain updated = brain;
-		for (ChatMessage m : produced) {
-			if (m.role() != ChatMessage.Role.ASSISTANT) {
-				continue;
-			}
-			if (!m.text().isBlank()) {
-				updated = updated.withMemory(SELF_PREFIX + m.text());
-			}
-			// Many models speak through the say tool instead of plain text; those words are the villager's too.
-			for (var call : m.toolCalls()) {
-				var text = call.args() == null ? null : call.args().get("text");
-				if (call.name().equals("say") && text != null && text.isJsonPrimitive() && !text.getAsString().isBlank()) {
-					updated = updated.withMemory(SELF_PREFIX + text.getAsString());
-				}
-			}
-		}
-		return updated;
+	/**
+	 * Remembers a line the villager has just spoken to the king. This happens the moment it is said, so it is kept
+	 * even if the run that produced it is later cancelled by a newer command or the chat is closed.
+	 */
+	public static VillagerBrain withVillagerLine(VillagerBrain brain, String text) {
+		return text == null || text.isBlank() ? brain : brain.withMemory(SELF_PREFIX + text);
 	}
 }

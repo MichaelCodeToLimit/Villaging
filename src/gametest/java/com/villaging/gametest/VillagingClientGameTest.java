@@ -55,6 +55,9 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.client.input.MouseButtonInfo;
 import org.lwjgl.glfw.GLFW;
 
 public class VillagingClientGameTest implements FabricClientGameTest {
@@ -156,6 +159,7 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 			attempt("review: respectProtection=false skips the range limit", () -> reviewRangeSkippedWithoutProtection(server));
 			attempt("review: no shooting through the king", () -> reviewLineOfFire(server));
 			attempt("end to end: one order becomes a script that builds a chest", () -> getLogsAndMakeAChest(context, server));
+			attempt("selecting, copying and pasting text in the chat screen", () -> chatSelectCopyPaste(context, server));
 			attempt("a command from a non-king is ignored", () -> forgedPacket(context, server));
 			attempt("speaking to an ordinary villager makes it smart (and the speaker king)", () -> speakingToAnOrdinaryVillager(context, server));
 			attempt("sneak-click opens the chat on an ordinary villager", () -> sneakClickOnAnOrdinaryVillager(context, server));
@@ -177,6 +181,11 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 	}
 
 	private void attempt(String name, Check check) {
+		// VILLAGING_ONLY=<text> runs just the checks whose name contains it (for chasing one failure).
+		String only = System.getenv("VILLAGING_ONLY");
+		if (only != null && !name.contains(only)) {
+			return;
+		}
 		try {
 			check.run();
 			System.out.println("[villaging-gametest] PASS " + name);
@@ -1383,7 +1392,7 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 		context.getInput().pressKey(GLFW.GLFW_KEY_ENTER);
 
 		server.waitFor(srv -> v.position().distanceTo(new Vec3(6, 100, 0)) <= 2.5 && ollama.requests.size() >= 2
-				&& VillagerBrains.get(v).memory().size() >= 2, 1200);
+				&& VillagerBrains.get(v).memory().contains("me: I have arrived, my king."), 1200);
 
 		require(ollama.requests.size() == 2, "expected 2 model calls, saw " + ollama.requests.size());
 		String first = ollama.requests.get(0);
@@ -1401,6 +1410,51 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 		List<String> shown = context.computeOnClient(mc -> ((VillagerChatScreen) mc.gui.screen()).transcript());
 		require(shown.contains("You: please walk to the spot six blocks east"), "the king's line is missing on screen: " + shown);
 		context.takeScreenshot("villaging-after-walk");
+		context.runOnClient(mc -> mc.gui.setScreen(null));
+	}
+
+	private void chatSelectCopyPaste(ClientGameTestContext context, TestServerContext server) throws Exception {
+		List<String> history = List.of("king: please walk to the spot six blocks east", "me: On my way, my king!");
+		context.runOnClient(mc -> mc.gui.setScreen(new VillagerChatScreen(1, "Alma", history)));
+		context.waitForScreen(VillagerChatScreen.class);
+		context.waitTick();
+
+		// Real mouse handlers: press on one character, drag to another, release.
+		double[] from = context.computeOnClient(mc -> ((VillagerChatScreen) mc.gui.screen()).pointAt(0, 5));
+		double[] to = context.computeOnClient(mc -> ((VillagerChatScreen) mc.gui.screen()).pointAt(0, 11));
+		context.runOnClient(mc -> {
+			VillagerChatScreen chat = (VillagerChatScreen) mc.gui.screen();
+			chat.mouseClicked(new MouseButtonEvent(from[0], from[1], new MouseButtonInfo(0, 0)), false);
+			chat.mouseDragged(new MouseButtonEvent(to[0], to[1], new MouseButtonInfo(0, 0)), 0, 0);
+			chat.mouseReleased(new MouseButtonEvent(to[0], to[1], new MouseButtonInfo(0, 0)));
+		});
+		String selected = context.computeOnClient(mc -> ((VillagerChatScreen) mc.gui.screen()).selectedText());
+		require(selected.equals("please"), "dragging should select 'please', got '" + selected + "'");
+		context.takeScreenshot("villaging-chat-selection");
+
+		// Ctrl+C copies the selection and Ctrl+V pastes it into the box. The key events are sent straight to the
+		// screen because the test input does not deliver the Ctrl modifier; the screen sees the same event from a keyboard.
+		context.runOnClient(mc -> mc.keyboardHandler.setClipboard("untouched"));
+		boolean copied = context.computeOnClient(mc -> ((VillagerChatScreen) mc.gui.screen())
+				.keyPressed(new KeyEvent(GLFW.GLFW_KEY_C, 0, GLFW.GLFW_MOD_CONTROL)));
+		String clipboard = context.computeOnClient(mc -> mc.keyboardHandler.getClipboard());
+		require(copied && clipboard.equals("please"), "Ctrl+C should copy the selection, clipboard has '" + clipboard + "'");
+		context.runOnClient(mc -> ((VillagerChatScreen) mc.gui.screen())
+				.keyPressed(new KeyEvent(GLFW.GLFW_KEY_V, 0, GLFW.GLFW_MOD_CONTROL)));
+		String typed = context.computeOnClient(mc -> ((VillagerChatScreen) mc.gui.screen()).typed());
+		require(typed.equals("please"), "Ctrl+V should paste into the box, it holds '" + typed + "'");
+
+		// Right-click copies the whole message under the pointer.
+		double[] reply = context.computeOnClient(mc -> ((VillagerChatScreen) mc.gui.screen()).pointAt(1, 3));
+		context.runOnClient(mc -> ((VillagerChatScreen) mc.gui.screen())
+				.mouseClicked(new MouseButtonEvent(reply[0], reply[1], new MouseButtonInfo(1, 0)), false));
+		String whole = context.computeOnClient(mc -> mc.keyboardHandler.getClipboard());
+		require(whole.equals("Alma: On my way, my king!"), "right-click should copy the whole message, got '" + whole + "'");
+
+		// A new message from the villager clears the highlight.
+		context.runOnClient(mc -> ((VillagerChatScreen) mc.gui.screen()).addVillagerLine("Done."));
+		String after = context.computeOnClient(mc -> ((VillagerChatScreen) mc.gui.screen()).selectedText());
+		require(after.isEmpty(), "a new line should clear the selection, still has '" + after + "'");
 		context.runOnClient(mc -> mc.gui.setScreen(null));
 	}
 

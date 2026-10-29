@@ -74,6 +74,18 @@ First release.
 - Crown in the creative inventory.
 ```
 
+## Version 1.0.1 (update)
+
+File: `build/libs/villaging-1.0.1.jar`. Same loader, game version and Fabric API dependency as 1.0.0.
+
+```markdown
+Fixes and improvements.
+- Select and copy text in the villager chat: drag to select, double-click a word, triple-click a message, Ctrl+C to copy, right-click to copy a whole message. Ctrl+V pastes into the box.
+- A villager's words are now saved as soon as they are said, so closing and reopening the chat keeps the whole conversation.
+- Villagers answer faster: they say they are thinking after 3 seconds, retry failed AI calls sooner, and skip an extra AI round when they only talk.
+- Clear messages when the AI service has run out of free usage (quota) or rejects your key, instead of retrying for a minute.
+```
+
 ## Before you upload (checklist)
 - [x] License: MIT everywhere (done).
 - [x] Automated checks: unit tests and the in-game suite (65 checks) pass on the release jar's code.

@@ -33,7 +33,7 @@ public final class GeminiProvider implements AiProvider {
 	};
 
 	public GeminiProvider(String baseUrl, String apiKey, String model) {
-		this(baseUrl, apiKey, model, Duration.ofSeconds(90));
+		this(baseUrl, apiKey, model, Duration.ofSeconds(25));
 	}
 
 	public GeminiProvider(String baseUrl, String apiKey, String model, Duration timeout) {

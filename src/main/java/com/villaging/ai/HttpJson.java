@@ -42,7 +42,8 @@ final class HttpJson {
 			throw new AiException("Interrupted while waiting for the AI service", e);
 		}
 		if (response.statusCode() / 100 != 2) {
-			throw new AiException("AI service returned HTTP " + response.statusCode() + ": " + abbreviate(response.body()));
+			throw new AiException("AI service returned HTTP " + response.statusCode() + ": " + abbreviate(response.body()),
+					response.statusCode());
 		}
 		try {
 			JsonElement parsed = JsonParser.parseString(response.body());

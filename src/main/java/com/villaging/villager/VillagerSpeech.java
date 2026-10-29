@@ -29,6 +29,9 @@ public final class VillagerSpeech {
 		}
 		VillagerBrain brain = VillagerBrains.get(villager);
 		String name = brain.name().isEmpty() ? "Villager" : brain.name();
+		if (brain.smart()) {
+			VillagerBrains.set(villager, Conversation.withVillagerLine(brain, text));
+		}
 		ServerPlayer king = server.getPlayerList().getPlayer(kingId);
 		if (king != null) {
 			king.sendSystemMessage(Component.literal("<" + name + "> " + text));
