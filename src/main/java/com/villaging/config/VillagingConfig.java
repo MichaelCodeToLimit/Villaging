@@ -23,14 +23,24 @@ public record VillagingConfig(
 		boolean allowBreakBedrock,
 		int maxScriptSteps,
 		int maxScriptSeconds,
-		int maxScriptDepth) {
+		int maxScriptDepth,
+		String fallbackProvider) {
 
 	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+
+	/** Without a backup AI: the older setting list, so existing code that builds a config keeps working. */
+	public VillagingConfig(String provider, String apiKey, String model, String cloudUrl, String ollamaUrl,
+			String ollamaModel, String geminiModel, String geminiUrl, int maxSteps, int callsPerMinute, int actionRange,
+			boolean respectProtection, boolean allowBreakBedrock, int maxScriptSteps, int maxScriptSeconds,
+			int maxScriptDepth) {
+		this(provider, apiKey, model, cloudUrl, ollamaUrl, ollamaModel, geminiModel, geminiUrl, maxSteps, callsPerMinute,
+				actionRange, respectProtection, allowBreakBedrock, maxScriptSteps, maxScriptSeconds, maxScriptDepth, "");
+	}
 
 	public static VillagingConfig defaults() {
 		return new VillagingConfig("cloud", "", "claude-sonnet-5-5", "https://api.anthropic.com",
 				"http://localhost:11434", "llama3.1:8b", "gemini-3.5-flash", "https://generativelanguage.googleapis.com",
-				20, 10, 64, true, false, 500, 300, 3);
+				20, 10, 64, true, false, 500, 300, 3, "");
 	}
 
 	public static VillagingConfig load(Path file) {
@@ -61,7 +71,8 @@ public record VillagingConfig(
 					raw.allowBreakBedrock != null ? raw.allowBreakBedrock : defaults.allowBreakBedrock,
 					raw.maxScriptSteps != null && raw.maxScriptSteps > 0 ? raw.maxScriptSteps : defaults.maxScriptSteps,
 					raw.maxScriptSeconds != null && raw.maxScriptSeconds > 0 ? raw.maxScriptSeconds : defaults.maxScriptSeconds,
-					raw.maxScriptDepth != null && raw.maxScriptDepth > 0 ? raw.maxScriptDepth : defaults.maxScriptDepth);
+					raw.maxScriptDepth != null && raw.maxScriptDepth > 0 ? raw.maxScriptDepth : defaults.maxScriptDepth,
+					raw.fallbackProvider == null ? "" : raw.fallbackProvider.strip());
 		} catch (IOException | RuntimeException e) {
 			Villaging.LOGGER.error("Could not read {}; using defaults", file, e);
 			return defaults;
@@ -72,7 +83,31 @@ public record VillagingConfig(
 	public VillagingConfig withKey(String newProvider, String newKey) {
 		return new VillagingConfig(newProvider, newKey, model, cloudUrl, ollamaUrl, ollamaModel, geminiModel, geminiUrl,
 				maxSteps, callsPerMinute, actionRange, respectProtection, allowBreakBedrock, maxScriptSteps,
-				maxScriptSeconds, maxScriptDepth);
+				maxScriptSeconds, maxScriptDepth, fallbackProvider);
+	}
+
+	/** The same settings with the backup AI as the main one and no backup of its own. */
+	public VillagingConfig backupConfig() {
+		return new VillagingConfig(fallbackProvider, apiKey, model, cloudUrl, ollamaUrl, ollamaModel, geminiModel, geminiUrl,
+				maxSteps, callsPerMinute, actionRange, respectProtection, allowBreakBedrock, maxScriptSteps,
+				maxScriptSeconds, maxScriptDepth, "");
+	}
+
+	/**
+	 * Fix hint when {@code fallbackProvider} is set but cannot work, empty when there is no backup AI or it is fine.
+	 * A broken backup never stops the main AI; it is simply not used.
+	 */
+	public String fallbackProblem() {
+		if (fallbackProvider.isEmpty()) {
+			return "";
+		}
+		if (fallbackProvider.equals(provider)) {
+			return "\"fallbackProvider\" must be different from \"provider\" in config/villaging.json.";
+		}
+		if (!fallbackProvider.equals("cloud") && !fallbackProvider.equals("gemini") && !fallbackProvider.equals("ollama")) {
+			return "Unknown \"fallbackProvider\" \"" + fallbackProvider + "\" in config/villaging.json; use \"cloud\", \"gemini\" or \"ollama\".";
+		}
+		return backupConfig().problem();
 	}
 
 	public void save(Path file) throws IOException {
@@ -115,5 +150,6 @@ public record VillagingConfig(
 		Integer maxScriptSteps;
 		Integer maxScriptSeconds;
 		Integer maxScriptDepth;
+		String fallbackProvider;
 	}
 }

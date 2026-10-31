@@ -25,7 +25,8 @@ Building from blueprints, ranks and chains of command beyond relaying orders are
    answer "I can't think right now" until the limit resets.
 
    **Local (Ollama).** Install Ollama, `ollama pull` a model that supports tools, then set
-   `"provider": "ollama"` and `"ollamaModel": "<name>"` (default URL `http://localhost:11434`).
+   `"provider": "ollama"` and `"ollamaModel": "<name>"` (default URL `http://localhost:11434`). Villaging keeps
+   the model warm for 30 minutes after a request, so follow-up orders answer without a cold start.
 
 | Option | Default | Meaning |
 |---|---|---|
@@ -35,6 +36,7 @@ Building from blueprints, ranks and chains of command beyond relaying orders are
 | `model` | `claude-sonnet-5-5` | cloud model |
 | `cloudUrl` | `https://api.anthropic.com` | cloud base URL |
 | `ollamaUrl` / `ollamaModel` | `http://localhost:11434` / `llama3.1:8b` | local model |
+| `fallbackProvider` | empty (off) | backup AI used when the main one runs out of quota, is overloaded or unreachable: `ollama`, `gemini` or `cloud` (must differ from `provider`; a keyed backup uses the same `apiKey`). A failing main AI rests for a minute so messages are not delayed. Example: `"provider": "gemini"` with `"fallbackProvider": "ollama"` keeps your villagers working on a local model when Gemini's free allowance is used up. |
 | `maxSteps` | 20 | model calls per command |
 | `callsPerMinute` | 10 | per-villager rate limit (protects your bill) |
 | `actionRange` | 64 | how far an order may send a villager |

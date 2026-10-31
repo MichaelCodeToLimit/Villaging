@@ -124,4 +124,47 @@ class VillagingConfigTest {
 		assertEquals(300, config.maxScriptSeconds());
 		assertEquals(3, config.maxScriptDepth());
 	}
+
+	private static VillagingConfig withFallback(String provider, String apiKey, String fallback) throws Exception {
+		Path file = java.nio.file.Files.createTempFile("villaging", ".json");
+		Files.writeString(file, "{\"provider\":\"" + provider + "\",\"apiKey\":\"" + apiKey + "\",\"fallbackProvider\":\"" + fallback + "\"}");
+		return VillagingConfig.load(file);
+	}
+
+	@Test
+	void theBackupAiIsOffByDefault() {
+		assertEquals("", VillagingConfig.defaults().fallbackProvider());
+		assertEquals("", VillagingConfig.defaults().fallbackProblem());
+	}
+
+	@Test
+	void theBackupAiIsReadFromTheFileAndSurvivesSavingAKey() throws Exception {
+		VillagingConfig config = withFallback("gemini", "k", "ollama");
+		assertEquals("ollama", config.fallbackProvider());
+		assertEquals("ollama", config.withKey("cloud", "other").fallbackProvider());
+		assertEquals("", config.fallbackProblem());
+	}
+
+	@Test
+	void aBackupThatIsTheSameAsTheMainAiIsRejected() throws Exception {
+		assertTrue(withFallback("ollama", "", "ollama").fallbackProblem().contains("different"));
+	}
+
+	@Test
+	void anUnknownBackupIsRejected() throws Exception {
+		assertTrue(withFallback("ollama", "", "banana").fallbackProblem().contains("fallbackProvider"));
+	}
+
+	@Test
+	void aKeyedBackupNeedsAKey() throws Exception {
+		assertTrue(withFallback("ollama", "", "gemini").fallbackProblem().contains("apiKey"));
+		assertEquals("", withFallback("ollama", "k", "gemini").fallbackProblem());
+	}
+
+	@Test
+	void theBackupConfigUsesTheBackupProviderAndHasNoBackupOfItsOwn() throws Exception {
+		VillagingConfig backup = withFallback("gemini", "k", "ollama").backupConfig();
+		assertEquals("ollama", backup.provider());
+		assertEquals("", backup.fallbackProvider());
+	}
 }

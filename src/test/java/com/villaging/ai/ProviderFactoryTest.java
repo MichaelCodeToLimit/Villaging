@@ -43,4 +43,28 @@ class ProviderFactoryTest {
 				() -> ProviderFactory.create(with("cloud", "")));
 		assertTrue(e.getMessage().contains("apiKey"));
 	}
+
+	private static VillagingConfig withBackup(String provider, String apiKey, String backup) {
+		VillagingConfig base = with(provider, apiKey);
+		return new VillagingConfig(base.provider(), base.apiKey(), base.model(), base.cloudUrl(), base.ollamaUrl(),
+				base.ollamaModel(), base.geminiModel(), base.geminiUrl(), base.maxSteps(), base.callsPerMinute(),
+				base.actionRange(), base.respectProtection(), base.allowBreakBedrock(), base.maxScriptSteps(),
+				base.maxScriptSeconds(), base.maxScriptDepth(), backup);
+	}
+
+	@Test
+	void aConfiguredBackupWrapsTheMainAi() {
+		assertInstanceOf(FallbackProvider.class, ProviderFactory.create(withBackup("gemini", "key", "ollama")));
+	}
+
+	@Test
+	void aBrokenBackupIsIgnoredInsteadOfBreakingTheMainAi() {
+		assertInstanceOf(GeminiProvider.class, ProviderFactory.create(withBackup("gemini", "key", "gemini")));
+		assertInstanceOf(GeminiProvider.class, ProviderFactory.create(withBackup("gemini", "key", "banana")));
+	}
+
+	@Test
+	void noBackupMeansNoWrapper() {
+		assertInstanceOf(GeminiProvider.class, ProviderFactory.create(withBackup("gemini", "key", "")));
+	}
 }

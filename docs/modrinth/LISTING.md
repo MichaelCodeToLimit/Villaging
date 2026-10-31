@@ -96,6 +96,15 @@ New commands.
 - `/villaging summon <name>` brings one helper to your side and stops what it was doing. A start of the name is enough, and it needs no AI. King only.
 ```
 
+## Version 1.0.3 (update)
+
+File: `build/libs/villaging-1.0.3.jar`. Same loader, game version and Fabric API dependency.
+
+```markdown
+Backup AI.
+- New optional setting `fallbackProvider` in `config/villaging.json` (`ollama`, `gemini` or `cloud`). When your main AI runs out of free usage, is overloaded or unreachable, villagers switch to the backup automatically. The main AI rests for a minute after a failure so messages are not delayed. Off by default.
+```
+
 ## Before you upload (checklist)
 - [x] License: MIT everywhere (done).
 - [x] Automated checks: unit tests and the in-game suite (65 checks) pass on the release jar's code.

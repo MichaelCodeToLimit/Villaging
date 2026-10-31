@@ -24,6 +24,7 @@ class OllamaProviderTest {
 			JsonObject body = JsonParser.parseString(server.lastBody.get()).getAsJsonObject();
 			assertEquals("llama3.1:8b", body.get("model").getAsString());
 			assertTrue(!body.get("stream").getAsBoolean());
+			assertEquals("30m", body.get("keep_alive").getAsString());
 			JsonArray messages = body.getAsJsonArray("messages");
 			assertEquals("system", messages.get(0).getAsJsonObject().get("role").getAsString());
 			assertEquals("sys", messages.get(0).getAsJsonObject().get("content").getAsString());

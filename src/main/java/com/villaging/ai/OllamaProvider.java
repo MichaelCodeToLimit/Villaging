@@ -11,6 +11,8 @@ import java.util.concurrent.atomic.AtomicLong;
 
 /** Talks to a local Ollama server through its /api/chat endpoint. */
 public final class OllamaProvider implements AiProvider {
+	/** Keep a local model warm between conversations without pinning it in memory indefinitely. */
+	private static final String KEEP_ALIVE = "30m";
 	private final String baseUrl;
 	private final String model;
 	private final Duration timeout;
@@ -31,6 +33,7 @@ public final class OllamaProvider implements AiProvider {
 		JsonObject body = new JsonObject();
 		body.addProperty("model", model);
 		body.addProperty("stream", false);
+		body.addProperty("keep_alive", KEEP_ALIVE);
 		JsonArray encoded = new JsonArray();
 		encoded.add(message("system", system));
 		for (ChatMessage m : messages) {

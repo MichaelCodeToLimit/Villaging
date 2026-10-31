@@ -62,5 +62,5 @@ Repository: https://github.com/MichaelCodeToLimit/Villaging (public, MIT, branch
   (`keyMode: player | server | both`, default both). Order: refactor with all checks green, then Paper skeleton (commands, keys, networking), then
   actions, kings, golems, crown. Write the spec to `docs/superpowers/specs/` and get the owner's approval before coding.
 - Later sub-projects (not started): building from blueprints, ranks.
-- Known smaller items: an in-mod `keep_alive` for Ollama so the model stays loaded; fallback model when the AI service is overloaded;
+- Known smaller items (Ollama `keep_alive: 30m` was already sent by the mod; the optional `fallbackProvider` backup AI was added in 1.0.3):
   weapons never wear out; Infinity bow false failure; bed use only lies the fake player down.
