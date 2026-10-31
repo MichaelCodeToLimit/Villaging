@@ -71,7 +71,14 @@ public final class PlaceBlockAction implements VillagerAction {
 		}
 		ItemStack stack = hands.player().getItemInHand(InteractionHand.MAIN_HAND);
 		String name = stack.getHoverName().getString();
-		InteractionResult result = hands.player().gameMode.useItemOn(hands.player(), level, stack, InteractionHand.MAIN_HAND, hit);
+		// Sneaking, like a player placing against a door or chest, so the neighbour is built against and not used (opened).
+		hands.player().setShiftKeyDown(true);
+		InteractionResult result;
+		try {
+			result = hands.player().gameMode.useItemOn(hands.player(), level, stack, InteractionHand.MAIN_HAND, hit);
+		} finally {
+			hands.player().setShiftKeyDown(false);
+		}
 		hands.syncTo();
 		villager.swing(InteractionHand.MAIN_HAND);
 		if (result.consumesAction() && !level.getBlockState(pos).canBeReplaced()) {

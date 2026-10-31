@@ -254,4 +254,52 @@ class BuildEngineTest {
 		assertEquals(Step.PAUSE_MISSING, next.step());
 		assertEquals(1, next.count());
 	}
+
+	@Test
+	void aPlacementThatFailsIsTriedAgainAtTheEndBeforeItIsGivenUp() throws Exception {
+		FakeWorld world = new FakeWorld();
+		FakeItems items = new FakeItems();
+		items.carried.put("minecraft:stone", 10);
+		BuildEngine e = engine(row(3));
+		// first cell: the placement fails (say the helper stood in the way)
+		Next first = e.next(world, items);
+		assertEquals(Step.PLACE, first.step());
+		assertEquals(0, first.cellIndex());
+		e.failed("0: I couldn't place Stone there");
+		assertEquals(0, e.blockedCount(), "a first failure is not final");
+		// the other two go in, then the first one comes round again and works
+		List<Integer> placed = new ArrayList<>();
+		for (int i = 0; i < 20; i++) {
+			Next n = e.next(world, items);
+			if (n.step() == Step.PLACE) {
+				placed.add(n.cellIndex());
+				Cell c = e.cell(n.cellIndex());
+				world.blocks.put(FakeWorld.key(AX + c.x(), AY + c.y(), AZ + c.z()), "minecraft:stone");
+				items.carried.merge(n.item(), -n.count(), Integer::sum);
+				e.placed();
+			} else if (n.step() == Step.FINISHED) {
+				break;
+			}
+		}
+		assertEquals(List.of(1, 2, 0), placed);
+		assertEquals(3, e.done());
+		assertEquals(0, e.blockedCount());
+	}
+
+	@Test
+	void aPlacementThatFailsTwiceIsSkippedAndReported() throws Exception {
+		FakeWorld world = new FakeWorld();
+		FakeItems items = new FakeItems();
+		items.carried.put("minecraft:stone", 10);
+		BuildEngine e = engine(row(1));
+		assertEquals(Step.PLACE, e.next(world, items).step());
+		e.failed("first try");
+		Next again = e.next(world, items);
+		assertEquals(Step.PLACE, again.step());
+		e.failed("second try");
+		assertEquals(Step.FINISHED, e.next(world, items).step());
+		assertEquals(1, e.blockedCount());
+		assertTrue(e.blockedNotes().get(0).contains("second try"));
+		assertEquals(0, e.done());
+	}
 }

@@ -75,7 +75,7 @@ final class BuildHandlers {
 
 	/** Saves the blueprint unless the world is full of them; returns an error text or null. */
 	private static String save(ToolContext ctx, Blueprint b) {
-		BuildSettings settings = BlueprintFiles.settings();
+		BuildSettings settings = ctx.config().build();
 		List<String> names = BlueprintStore.names(dir(ctx));
 		if (!names.contains(b.name()) && names.size() >= settings.maxSavedBlueprints()) {
 			return "this world already has " + names.size() + " blueprints (the most is " + settings.maxSavedBlueprints()
@@ -100,7 +100,7 @@ final class BuildHandlers {
 	private static CompletableFuture<String> design(ToolContext ctx, JsonObject args) {
 		try {
 			JsonObject plan = JsonParser.parseString(args.get("plan").getAsString()).getAsJsonObject();
-			Blueprint b = ShapePlan.compile(args.get("name").getAsString(), plan, BlueprintFiles.settings().maxBlueprintBlocks());
+			Blueprint b = ShapePlan.compile(args.get("name").getAsString(), plan, ctx.config().build().maxBlueprintBlocks());
 			return saved(ctx, b);
 		} catch (BlueprintException e) {
 			return failed("the plan has a problem: " + e.getMessage());
@@ -119,7 +119,7 @@ final class BuildHandlers {
 				args.has("style") ? args.get("style").getAsString() : d.style(),
 				args.has("roof") ? args.get("roof").getAsString() : d.roof());
 		try {
-			Blueprint b = Templates.build(id, args.get("name").getAsString(), p, BlueprintFiles.settings().maxBlueprintBlocks());
+			Blueprint b = Templates.build(id, args.get("name").getAsString(), p, ctx.config().build().maxBlueprintBlocks());
 			Blueprint tagged = new Blueprint(b.name(), b.sizeX(), b.sizeY(), b.sizeZ(), b.palette(), b.cells(), "template:" + id);
 			return saved(ctx, tagged);
 		} catch (BlueprintException e) {
@@ -133,7 +133,7 @@ final class BuildHandlers {
 			return done("there are no blueprints yet; make one with use_template or design_blueprint");
 		}
 		List<String> lines = new ArrayList<>();
-		int max = BlueprintFiles.settings().maxBlueprintBlocks();
+		int max = ctx.config().build().maxBlueprintBlocks();
 		for (String name : names) {
 			Optional<Blueprint> b = BlueprintStore.load(dir(ctx), name, max);
 			lines.add(b.map(x -> name + " (" + size(x) + ")").orElse(name + " (damaged, could not be read)"));
@@ -142,7 +142,7 @@ final class BuildHandlers {
 	}
 
 	private static Optional<Blueprint> load(ToolContext ctx, String name) {
-		return BlueprintStore.load(dir(ctx), name, BlueprintFiles.settings().maxBlueprintBlocks());
+		return BlueprintStore.load(dir(ctx), name, ctx.config().build().maxBlueprintBlocks());
 	}
 
 	private static CompletableFuture<String> noSuch(ToolContext ctx, String name) {
@@ -272,7 +272,7 @@ final class BuildHandlers {
 		}
 		Blueprint turned = loaded.get().rotated(job.rotation());
 		boolean firstStart = job.status() == BuildJob.Status.PLANNED;
-		boolean big = job.total() > BlueprintFiles.settings().buildAskThreshold() || job.note().startsWith("blocked:");
+		boolean big = job.total() > ctx.config().build().buildAskThreshold() || job.note().startsWith("blocked:");
 		if (firstStart && big && helper.level() instanceof ServerLevel level) {
 			Map<String, Integer> inChest = job.stockpile().map(p -> Stockpile.read(level, new BlockPos(p.x(), p.y(), p.z()))).orElse(Map.of());
 			String missing = MaterialPlanner.plan(turned, Stockpile.carried(helper), inChest).describeMissing();
@@ -287,7 +287,7 @@ final class BuildHandlers {
 	}
 
 	private static String begin(ToolContext ctx, PathfinderMob helper, BuildJob job, Blueprint turned) {
-		int max = BlueprintFiles.settings().maxActiveBuilds();
+		int max = ctx.config().build().maxActiveBuilds();
 		if (!BuildRegistry.tryStart(helper.getUUID(), max)) {
 			return "failed: " + BuildRegistry.count() + " builds are already running in this world (the most is " + max + "); try again when one finishes";
 		}

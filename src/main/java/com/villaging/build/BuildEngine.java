@@ -103,7 +103,20 @@ public final class BuildEngine {
 		pointer++;
 	}
 
-	/** Placing the cell last returned as PLACE did not work; it is skipped and reported. */
+	/**
+	 * Placing the cell last returned as PLACE did not work. The first time it is put off to the end (often the helper itself was
+	 * standing in the way and will be elsewhere by then); a second failure skips and reports it.
+	 */
+	public void failed(String why) {
+		if (!secondPass) {
+			retry.add(queue.get(pointer));
+			pointer++;
+		} else {
+			blocked(why);
+		}
+	}
+
+	/** The cell last returned as PLACE cannot be built; it is skipped and reported at once. */
 	public void blocked(String why) {
 		blockedNotes.add(why);
 		pointer++;

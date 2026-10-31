@@ -22,7 +22,14 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.level.block.BedBlock;
+import net.minecraft.world.level.block.HorizontalDirectionalBlock;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.BedPart;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.world.level.block.state.properties.DoubleBlockHalf;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * Builds a blueprint one block at a time. It is a <em>continuous</em> action: {@code start_build} returns at once and the
@@ -32,6 +39,8 @@ import net.minecraft.world.level.block.state.BlockState;
 public final class BuildAction implements VillagerAction {
 	private static final int SAVE_EVERY = 25;
 	private static final int MAX_STEPS_PER_TICK = 400;
+	/** How many times the helper steps out of a cell it is standing in before it just tries to place anyway. */
+	private static final int MAX_ASIDE_TRIES = 6;
 
 	private final UUID kingId;
 	private final VillagingConfig config;
@@ -46,6 +55,7 @@ public final class BuildAction implements VillagerAction {
 	private int placingIndex = -1;
 	private BlockPos placingPos;
 	private int waitTicks;
+	private int asideTries;
 	private int nextAnnounce = 25;
 	private int lastSaved;
 	private boolean stockpileBroken;
@@ -92,13 +102,20 @@ public final class BuildAction implements VillagerAction {
 		for (int step = 0; step < MAX_STEPS_PER_TICK; step++) {
 			BuildEngine.Next next = engine.next(world, items);
 			switch (next.step()) {
-				case SKIP_DONE, SKIP_BLOCKED -> {
+				case SKIP_DONE -> {
 				}
+				case SKIP_BLOCKED -> Villaging.LOGGER.info("Build {}: skipped {}", job.blueprint(), next.note());
 				case PLACE -> {
 					Item item = item(next.item());
 					placingIndex = next.cellIndex();
 					Cell c = engine.cell(placingIndex);
 					placingPos = anchor.offset(c.x(), c.y(), c.z());
+					if (inTheWay(helper, placingPos) && asideTries++ < MAX_ASIDE_TRIES) {
+						stepAside(helper, placingPos);
+						waitTicks = 20;
+						return Status.RUNNING;
+					}
+					asideTries = 0;
 					placing = true;
 					inner = new PlaceBlockAction(item, placingPos, kingId, config);
 					return Status.RUNNING;
@@ -121,22 +138,57 @@ public final class BuildAction implements VillagerAction {
 		return Status.RUNNING;
 	}
 
+	/** True when the helper is standing where the next block goes: a block cannot be placed into someone. */
+	private static boolean inTheWay(PathfinderMob helper, BlockPos pos) {
+		return helper.getBoundingBox().intersects(new AABB(pos));
+	}
+
+	/** Walks a couple of blocks toward the middle of the build, out of the target cell. */
+	private void stepAside(PathfinderMob helper, BlockPos pos) {
+		Vec3 cell = Vec3.atCenterOf(pos);
+		Vec3 middle = Vec3.atCenterOf(anchor.offset(blueprint.sizeX() / 2, 0, blueprint.sizeZ() / 2));
+		double dx = middle.x - cell.x;
+		double dz = middle.z - cell.z;
+		double length = Math.sqrt(dx * dx + dz * dz);
+		if (length < 0.5) {
+			dx = 1;
+			dz = 0;
+			length = 1;
+		}
+		helper.getNavigation().moveTo(cell.x + dx / length * 2.5, helper.getY(), cell.z + dz / length * 2.5, 1.0);
+	}
+
 	private void finishInner(ServerLevel level, PathfinderMob helper, String failure) {
 		if (placing) {
 			if (failure != null) {
-				engine.blocked(placingPos.toShortString() + ": " + failure);
+				engine.failed(placingPos.toShortString() + ": " + failure);
+				Villaging.LOGGER.info("Build {}: could not place at {}: {}", job.blueprint(), placingPos.toShortString(), failure);
 			} else {
 				BlockState here = level.getBlockState(placingPos);
 				BlockState target = wanted(level, engine.cell(placingIndex));
 				if (here != target && !here.isAir()) {
 					level.setBlock(placingPos, target, 3);
 				}
+				completeTwoPartBlock(level, placingPos, target);
 				engine.placed();
 				progress(helper, level);
 			}
 			waitTicks = Math.max(0, config.build().buildTicksPerBlock() - 1);
 		} else if (failure != null) {
 			stockpileBroken = true;
+		}
+	}
+
+	/**
+	 * Doors, tall plants and beds are placed as two halves by one item. The item gives the second half whatever direction the
+	 * placing happened to have, so it is set to match the first half the blueprint asked for.
+	 */
+	private static void completeTwoPartBlock(ServerLevel level, BlockPos pos, BlockState first) {
+		if (first.hasProperty(BlockStateProperties.DOUBLE_BLOCK_HALF)
+				&& first.getValue(BlockStateProperties.DOUBLE_BLOCK_HALF) == DoubleBlockHalf.LOWER) {
+			level.setBlock(pos.above(), first.setValue(BlockStateProperties.DOUBLE_BLOCK_HALF, DoubleBlockHalf.UPPER), 3);
+		} else if (first.hasProperty(BedBlock.PART) && first.getValue(BedBlock.PART) == BedPart.FOOT) {
+			level.setBlock(pos.relative(first.getValue(HorizontalDirectionalBlock.FACING)), first.setValue(BedBlock.PART, BedPart.HEAD), 3);
 		}
 	}
 

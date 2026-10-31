@@ -17,6 +17,16 @@ import com.villaging.villager.FollowAction;
 import com.villaging.villager.GoToAction;
 import com.villaging.villager.HandsManager;
 import com.villaging.villager.MinecraftActionExecutor;
+import com.villaging.blueprint.Blueprint;
+import com.villaging.blueprint.BlueprintStore;
+import com.villaging.blueprint.BuildOrder;
+import com.villaging.blueprint.Cell;
+import com.villaging.blueprint.MaterialPlanner;
+import com.villaging.build.BlueprintFiles;
+import com.villaging.build.BuildJob;
+import com.villaging.build.BuildJobs;
+import com.villaging.build.BuildRegistry;
+import com.villaging.config.BuildSettings;
 import com.villaging.villager.TalkHold;
 import com.villaging.villager.ToolHandlers;
 import com.villaging.villager.VillagerHands;
@@ -162,6 +172,14 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 			attempt("selecting, copying and pasting text in the chat screen", () -> chatSelectCopyPaste(context, server));
 			attempt("/announcements reaches every nearby helper, one at a time, and only for the king", () -> announcements(context, server));
 			attempt("/villaging summon brings the named helper to the king and never guesses", () -> summonByName(context, server));
+			attempt("blueprint planning: template, plan_build report and the ASCII view", () -> blueprintPlanning(server));
+			attempt("blueprint build: a cottage appears block by block and the materials are used up exactly", () -> blueprintBuild(context, server, 0));
+			attempt("blueprint build: a rotated build puts the door where the plan says", () -> blueprintBuild(context, server, 1));
+			attempt("blueprint build: missing stone pauses with a message and resumes after a top-up", () -> blueprintPausesAndResumes(context, server));
+			attempt("blueprint build: occupied and protected cells are kept and reported", () -> blueprintBlockedCells(context, server));
+			attempt("blueprint build: stop pauses and a fresh start resumes without redoing blocks", () -> blueprintStopAndResume(context, server));
+			attempt("blueprint build: a big build asks the king and a no starts nothing", () -> blueprintAsksTheKing(context, server));
+			attempt("blueprint safety: banned blocks and oversized plans are refused with a reason", () -> blueprintRefusals(server));
 			attempt("a command from a non-king is ignored", () -> forgedPacket(context, server));
 			attempt("speaking to an ordinary villager makes it smart (and the speaker king)", () -> speakingToAnOrdinaryVillager(context, server));
 			attempt("sneak-click opens the chat on an ordinary villager", () -> sneakClickOnAnOrdinaryVillager(context, server));
@@ -1413,6 +1431,320 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 		require(shown.contains("You: please walk to the spot six blocks east"), "the king's line is missing on screen: " + shown);
 		context.takeScreenshot("villaging-after-walk");
 		context.runOnClient(mc -> mc.gui.setScreen(null));
+	}
+
+	// --- blueprint checks ---
+
+	private static final BlockPos SITE = new BlockPos(6, 100, -10);
+
+	private record Site(Villager helper, int helperId) {
+	}
+
+	/** Build settings for a quick test: one tick per block and the given size above which the king is asked. */
+	private static VillagingConfig buildConfig(int askThreshold) {
+		VillagingConfig d = VillagingConfig.defaults();
+		return new VillagingConfig(d.provider(), d.apiKey(), d.model(), d.cloudUrl(), d.ollamaUrl(), d.ollamaModel(), d.geminiModel(),
+				d.geminiUrl(), d.maxSteps(), d.callsPerMinute(), d.actionRange(), d.respectProtection(), d.allowBreakBedrock(),
+				d.maxScriptSteps(), d.maxScriptSeconds(), d.maxScriptDepth(), "", new BuildSettings(20_000, 50, 1, askThreshold, 3));
+	}
+
+	private static CompletableFuture<String> toolAsync(TestServerContext server, PathfinderMob v, VillagingConfig config, String name, String argsJson) {
+		UUID king = playerId(server);
+		return server.computeOnServer(srv -> {
+			MinecraftActionExecutor exec = new MinecraftActionExecutor(srv, v, king, config);
+			ToolCall call = new ToolCall("t", name, com.google.gson.JsonParser.parseString(argsJson).getAsJsonObject());
+			Optional<String> bad = exec.validate(call);
+			return bad.isPresent() ? CompletableFuture.completedFuture("invalid: " + bad.get()) : exec.execute(call);
+		});
+	}
+
+	/** A fresh arena with a smart helper and a saved 5x5 stone cottage called {@code name}. */
+	private static Site blueprintSite(TestServerContext server, String name) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager v = smartVillager(server, "Alma", 0, 100, 0);
+		int id = server.computeOnServer(srv -> v.getId());
+		String made = tool(server, v, buildConfig(1000), "use_template",
+				"{\"name\":\"" + name + "\",\"template\":\"cottage\",\"width\":5,\"depth\":5,\"height\":3,\"style\":\"stone\",\"roof\":\"flat\"}", 100);
+		require(made.startsWith("ok") && made.contains("blocks"), "use_template said: " + made);
+		return new Site(v, id);
+	}
+
+	private static Blueprint savedBlueprint(TestServerContext server, String name) {
+		return server.computeOnServer(srv -> BlueprintStore.load(BlueprintFiles.dir(srv), name, 20_000).orElseThrow());
+	}
+
+	private static void deleteBlueprints(TestServerContext server, String... names) {
+		server.runOnServer(srv -> {
+			for (String n : names) {
+				BlueprintStore.delete(BlueprintFiles.dir(srv), n);
+			}
+		});
+	}
+
+	private static net.minecraft.world.item.Item itemNamed(String id) {
+		return net.minecraft.core.registries.BuiltInRegistries.ITEM.getOptional(net.minecraft.resources.Identifier.parse(id)).orElseThrow();
+	}
+
+	/** Gives the helper exactly what the blueprint needs, plus {@code extra} of each. */
+	private static void stock(TestServerContext server, PathfinderMob v, Blueprint bp, int extra) {
+		server.runOnServer(srv -> {
+			for (MaterialPlanner.Row r : MaterialPlanner.plan(bp, java.util.Map.of(), java.util.Map.of()).rows()) {
+				for (int left = r.needed() + extra; left > 0; left -= 64) {
+					VillagerInventories.get(v).addItem(new ItemStack(itemNamed(r.item()), Math.min(64, left)));
+				}
+			}
+		});
+	}
+
+	/** How many of the blueprint's items the helper still carries. */
+	private static int carriedOf(TestServerContext server, PathfinderMob v, Blueprint bp) {
+		return server.computeOnServer(srv -> {
+			int total = 0;
+			for (MaterialPlanner.Row r : MaterialPlanner.plan(bp, java.util.Map.of(), java.util.Map.of()).rows()) {
+				total += VillagerInventories.get(v).count(itemNamed(r.item()));
+			}
+			return total;
+		});
+	}
+
+	private static int builtNow(net.minecraft.server.MinecraftServer srv, Blueprint bp, int turns) {
+		net.minecraft.server.level.ServerLevel level = srv.overworld();
+		Blueprint rotated = bp.rotated(turns);
+		int built = 0;
+		for (Cell c : BuildOrder.order(rotated)) {
+			net.minecraft.world.level.block.state.BlockState want =
+					com.villaging.build.Blocks.rotate(com.villaging.build.Blocks.parse(level, rotated.stateAt(c)).orElseThrow(), turns);
+			if (level.getBlockState(SITE.offset(c.x(), c.y(), c.z())) == want) {
+				built++;
+			}
+		}
+		return built;
+	}
+
+	private static int built(TestServerContext server, Blueprint bp, int turns) {
+		return server.computeOnServer(srv -> builtNow(srv, bp, turns));
+	}
+
+	private static void awaitBuildDone(TestServerContext server, PathfinderMob v, int ticks) {
+		server.waitFor(srv -> BuildJobs.get(v).isEmpty() && !BuildRegistry.isBuilding(v.getUUID()), ticks);
+	}
+
+	private static String planAt(TestServerContext server, PathfinderMob v, String name, int rotation) throws Exception {
+		return tool(server, v, buildConfig(1000), "plan_build",
+				"{\"name\":\"" + name + "\",\"x\":" + SITE.getX() + ",\"y\":" + SITE.getY() + ",\"z\":" + SITE.getZ() + ",\"rotation\":\"" + rotation + "\"}", 100);
+	}
+
+	private static String chatText(ClientGameTestContext context) {
+		return context.computeOnClient(mc -> mc.gui.screen() instanceof VillagerChatScreen s ? String.join("\n", s.transcript()) : "");
+	}
+
+	private static void openChat(ClientGameTestContext context, Site site) {
+		context.runOnClient(mc -> mc.gui.setScreen(new VillagerChatScreen(site.helperId(), "Alma")));
+		context.waitForScreen(VillagerChatScreen.class);
+	}
+
+	private void blueprintPlanning(TestServerContext server) throws Exception {
+		Site s = blueprintSite(server, "hut1");
+		try {
+			String layer = tool(server, s.helper(), buildConfig(1000), "show_blueprint", "{\"name\":\"hut1\",\"layer\":0}", 50);
+			require(layer.startsWith("ok") && layer.contains("Layer 0") && layer.contains(" = minecraft:"), "show_blueprint said: " + layer);
+			require(tool(server, s.helper(), buildConfig(1000), "list_blueprints", "{}", 50).contains("hut1"), "list_blueprints does not show hut1");
+			require(tool(server, s.helper(), buildConfig(1000), "plan_build", "{\"name\":\"nope\",\"x\":6,\"y\":100,\"z\":-10}", 50)
+					.contains("no blueprint called nope"), "an unknown blueprint should be named in the failure");
+
+			server.runCommand("setblock 4 100 -6 minecraft:chest");
+			server.runCommand("item replace block 4 100 -6 container.0 with minecraft:stone_bricks 30");
+			String plan = tool(server, s.helper(), buildConfig(1000), "plan_build",
+					"{\"name\":\"hut1\",\"x\":6,\"y\":100,\"z\":-10,\"stockpile_x\":4,\"stockpile_y\":100,\"stockpile_z\":-6}", 100);
+			require(plan.startsWith("ok") && plan.contains("Missing") && plan.contains("stone bricks") && plan.contains("start_build"), "plan_build said: " + plan);
+			BuildJob job = server.computeOnServer(srv -> BuildJobs.get(s.helper()).orElseThrow());
+			require(job.status() == BuildJob.Status.PLANNED && job.total() > 60 && job.stockpile().isPresent(), "the plan was not saved as a job: " + job);
+		} finally {
+			deleteBlueprints(server, "hut1");
+		}
+	}
+
+	private void blueprintBuild(ClientGameTestContext context, TestServerContext server, int quarterTurns) throws Exception {
+		String name = quarterTurns == 0 ? "hut2" : "hut3";
+		Site s = blueprintSite(server, name);
+		try {
+			Blueprint bp = savedBlueprint(server, name);
+			stock(server, s.helper(), bp, 0);
+			String plan = planAt(server, s.helper(), name, quarterTurns * 90);
+			require(plan.contains("I have all the materials"), "plan_build said: " + plan);
+			openChat(context, s);
+			String started = tool(server, s.helper(), buildConfig(1000), "start_build", "{}", 100);
+			require(started.startsWith("ok: building"), "start_build said: " + started);
+			awaitBuildDone(server, s.helper(), 8000);
+			int total = BuildOrder.order(bp).size();
+			require(built(server, bp, quarterTurns) == total, "only " + built(server, bp, quarterTurns) + " of " + total + " blocks were built as planned");
+			require(carriedOf(server, s.helper(), bp) == 0, "the materials were not used up exactly; " + carriedOf(server, s.helper(), bp) + " items are left");
+			require(chatText(context).contains("is built"), "the helper did not say it was done: " + chatText(context));
+			if (quarterTurns == 1) {
+				// the cottage door faces north; turned a quarter turn clockwise it faces east
+				Blueprint turned = bp.rotated(1);
+				Cell lowerDoor = turned.cells().stream().filter(c -> turned.stateAt(c).contains("_door") && turned.stateAt(c).contains("half=lower")).findFirst().orElseThrow();
+				net.minecraft.world.level.block.state.BlockState door = server.computeOnServer(srv ->
+						srv.overworld().getBlockState(SITE.offset(lowerDoor.x(), lowerDoor.y(), lowerDoor.z())));
+				require(door.getBlock() instanceof net.minecraft.world.level.block.DoorBlock
+						&& door.getValue(net.minecraft.world.level.block.DoorBlock.FACING) == net.minecraft.core.Direction.EAST,
+						"the turned door should face east, found " + door);
+			}
+			context.runOnClient(mc -> mc.gui.setScreen(null));
+		} finally {
+			deleteBlueprints(server, name);
+		}
+	}
+
+	private void blueprintPausesAndResumes(ClientGameTestContext context, TestServerContext server) throws Exception {
+		Site s = blueprintSite(server, "hut4");
+		try {
+			Blueprint bp = savedBlueprint(server, "hut4");
+			stock(server, s.helper(), bp, 0);
+			server.runOnServer(srv -> VillagerInventories.get(s.helper()).remove(Items.COBBLESTONE, 5));   // five short
+			ollama.script("{\"message\":{\"role\":\"assistant\",\"content\":\"On it, my king.\"}}");
+			planAt(server, s.helper(), "hut4", 0);
+			openChat(context, s);
+			require(tool(server, s.helper(), buildConfig(1000), "start_build", "{}", 100).startsWith("ok"), "start_build failed");
+			server.waitFor(srv -> BuildJobs.get(s.helper()).map(j -> j.status() == BuildJob.Status.PAUSED_MISSING_MATERIAL).orElse(false), 4000);
+			BuildJob paused = server.computeOnServer(srv -> BuildJobs.get(s.helper()).orElseThrow());
+			require(paused.note().contains("I need 5 more cobblestone"), "the pause note was: " + paused.note());
+			require(chatText(context).contains("I need 5 more cobblestone"), "the helper did not say what is missing: " + chatText(context));
+			require(built(server, bp, 0) == 20, "twenty floor blocks should be placed before the pause, found " + built(server, bp, 0));
+			server.waitFor(srv -> !ollama.requests.isEmpty(), 600);
+			require(ollama.requests.get(0).contains("paused"), "the model was not woken with the pause message");
+
+			server.runOnServer(srv -> VillagerInventories.get(s.helper()).addItem(new ItemStack(Items.COBBLESTONE, 5)));
+			String resumed = tool(server, s.helper(), buildConfig(1000), "start_build", "{}", 100);
+			require(resumed.startsWith("ok: building"), "resuming said: " + resumed);
+			awaitBuildDone(server, s.helper(), 8000);
+			int total = BuildOrder.order(bp).size();
+			require(built(server, bp, 0) == total, "the resumed build is incomplete: " + built(server, bp, 0) + " of " + total);
+			require(carriedOf(server, s.helper(), bp) == 0, "something was placed twice or wasted; " + carriedOf(server, s.helper(), bp) + " items are left");
+			context.runOnClient(mc -> mc.gui.setScreen(null));
+		} finally {
+			deleteBlueprints(server, "hut4");
+		}
+	}
+
+	private void blueprintBlockedCells(ClientGameTestContext context, TestServerContext server) throws Exception {
+		Site s = blueprintSite(server, "hut5");
+		try {
+			Blueprint bp = savedBlueprint(server, "hut5");
+			stock(server, s.helper(), bp, 0);
+			server.runCommand("setblock 6 101 -10 minecraft:dirt");        // sits in the wall's first cell
+			String plan = planAt(server, s.helper(), "hut5", 0);
+			require(plan.contains("occupied"), "plan_build should mention the occupied spot: " + plan);
+			CompletableFuture<String> started = toolAsync(server, s.helper(), buildConfig(1000), "start_build", "{}");
+			context.waitForScreen(AskScreen.class);                       // occupied spots always ask the king first
+			context.runOnClient(mc -> ((AskScreen) mc.gui.screen()).choose("Yes"));
+			require(awaitResult(server, started, 200).startsWith("ok: building"), "the build did not start after a yes");
+			openChat(context, s);
+			awaitBuildDone(server, s.helper(), 8000);
+			int total = BuildOrder.order(bp).size();
+			require(server.computeOnServer(srv -> srv.overworld().getBlockState(new BlockPos(6, 101, -10)).is(Blocks.DIRT)), "the dirt block was replaced");
+			require(built(server, bp, 0) == total - 1, "all other blocks should be built, found " + built(server, bp, 0) + " of " + total);
+			require(chatText(context).contains("occupied"), "the helper did not report the occupied spot: " + chatText(context));
+			context.runOnClient(mc -> mc.gui.setScreen(null));
+
+			// Nothing is forced where protection says no: in adventure mode every spot is protected.
+			resetArena(server);
+			Villager again = smartVillager(server, "Alma", 0, 100, 0);
+			stock(server, again, bp, 0);
+			server.runCommand("gamemode adventure @p");
+			try {
+				planAt(server, again, "hut5", 0);
+				require(tool(server, again, buildConfig(1000), "start_build", "{}", 100).startsWith("ok"), "start_build failed in adventure mode");
+				awaitBuildDone(server, again, 3000);
+				require(built(server, bp, 0) == 0, "blocks were placed where protection forbids it");
+			} finally {
+				server.runCommand("gamemode creative @p");
+			}
+		} finally {
+			deleteBlueprints(server, "hut5");
+		}
+	}
+
+	private void blueprintStopAndResume(ClientGameTestContext context, TestServerContext server) throws Exception {
+		Site s = blueprintSite(server, "hut6");
+		try {
+			Blueprint bp = savedBlueprint(server, "hut6");
+			stock(server, s.helper(), bp, 0);
+			planAt(server, s.helper(), "hut6", 0);
+			require(tool(server, s.helper(), buildConfig(1000), "start_build", "{}", 100).startsWith("ok"), "start_build failed");
+			server.waitFor(srv -> builtNow(srv, bp, 0) >= 15, 4000);
+			String stopped = tool(server, s.helper(), buildConfig(1000), "stop_build", "{}", 100);
+			require(stopped.startsWith("ok") && stopped.contains("paused"), "stop_build said: " + stopped);
+			BuildJob job = server.computeOnServer(srv -> BuildJobs.get(s.helper()).orElseThrow());
+			require(job.status() == BuildJob.Status.PAUSED_BY_KING, "the job should be paused by the king, it is " + job.status());
+			require(!server.computeOnServer(srv -> BuildRegistry.isBuilding(s.helper().getUUID())), "still counted as building after a stop");
+			int atStop = built(server, bp, 0);
+			require(atStop >= 15 && atStop < BuildOrder.order(bp).size(), "the stop came at " + atStop + " blocks");
+			context.waitTicks(40);
+			require(built(server, bp, 0) == atStop, "blocks kept appearing after the stop");
+
+			// A world reload turns a running job into a paused one; carrying on works from either.
+			server.runOnServer(srv -> BuildJobs.set(s.helper(), BuildJob.afterReload(BuildJobs.get(s.helper()).orElseThrow())));
+			require(tool(server, s.helper(), buildConfig(1000), "start_build", "{}", 100).startsWith("ok: building"), "start_build did not carry on");
+			awaitBuildDone(server, s.helper(), 8000);
+			int total = BuildOrder.order(bp).size();
+			require(built(server, bp, 0) == total, "the resumed build is incomplete: " + built(server, bp, 0) + " of " + total);
+			require(carriedOf(server, s.helper(), bp) == 0, "blocks were placed twice; " + carriedOf(server, s.helper(), bp) + " items are left");
+		} finally {
+			deleteBlueprints(server, "hut6");
+		}
+	}
+
+	private void blueprintAsksTheKing(ClientGameTestContext context, TestServerContext server) throws Exception {
+		Site s = blueprintSite(server, "hut7");
+		try {
+			Blueprint bp = savedBlueprint(server, "hut7");
+			stock(server, s.helper(), bp, 0);
+			planAt(server, s.helper(), "hut7", 0);
+			VillagingConfig asking = buildConfig(64);
+			CompletableFuture<String> no = toolAsync(server, s.helper(), asking, "start_build", "{}");
+			context.waitForScreen(AskScreen.class);
+			context.takeScreenshot("villaging-build-ask");
+			context.runOnClient(mc -> ((AskScreen) mc.gui.screen()).choose("No"));
+			String refused = awaitResult(server, no, 200);
+			require(refused.contains("not building"), "answering no should start nothing: " + refused);
+			require(built(server, bp, 0) == 0 && !server.computeOnServer(srv -> BuildRegistry.isBuilding(s.helper().getUUID())), "a no still started the build");
+			require(server.computeOnServer(srv -> BuildJobs.get(s.helper()).orElseThrow().status()) == BuildJob.Status.PLANNED, "the plan should be kept after a no");
+
+			CompletableFuture<String> yes = toolAsync(server, s.helper(), asking, "start_build", "{}");
+			context.waitForScreen(AskScreen.class);
+			context.runOnClient(mc -> ((AskScreen) mc.gui.screen()).choose("Yes"));
+			require(awaitResult(server, yes, 200).startsWith("ok: building"), "a yes should start the build");
+			server.waitFor(srv -> builtNow(srv, bp, 0) >= 3, 2000);
+			String cancelled = tool(server, s.helper(), asking, "cancel_build", "{}", 100);
+			require(cancelled.startsWith("ok") && cancelled.contains("cancelled"), "cancel_build said: " + cancelled);
+			require(server.computeOnServer(srv -> BuildJobs.get(s.helper()).isEmpty() && !BuildRegistry.isBuilding(s.helper().getUUID())), "the job survived cancel_build");
+		} finally {
+			deleteBlueprints(server, "hut7");
+		}
+	}
+
+	private void blueprintRefusals(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager v = smartVillager(server, "Alma", 0, 100, 0);
+		try {
+			com.google.gson.JsonObject boom = new com.google.gson.JsonObject();
+			boom.addProperty("name", "bad1");
+			boom.addProperty("plan", "{\"size\":[1,1,1],\"palette\":{\"T\":\"minecraft:tnt\"},\"shapes\":[{\"type\":\"box\",\"x\":0,\"y\":0,\"z\":0,\"w\":1,\"h\":1,\"d\":1,\"block\":\"T\"}]}");
+			String tnt = tool(server, v, buildConfig(1000), "design_blueprint", boom.toString(), 100);
+			require(tnt.startsWith("failed") && tnt.contains("tnt"), "TNT should be refused by name: " + tnt);
+			com.google.gson.JsonObject wide = new com.google.gson.JsonObject();
+			wide.addProperty("name", "bad2");
+			wide.addProperty("plan", "{\"size\":[5,5,5],\"palette\":{\"S\":\"minecraft:stone\"},\"shapes\":[{\"type\":\"box\",\"x\":0,\"y\":0,\"z\":0,\"w\":60,\"h\":1,\"d\":1,\"block\":\"S\"}]}");
+			String tooWide = tool(server, v, buildConfig(1000), "design_blueprint", wide.toString(), 100);
+			require(tooWide.startsWith("failed") && tooWide.contains("shape 1"), "an oversized shape should name itself: " + tooWide);
+			String list = tool(server, v, buildConfig(1000), "list_blueprints", "{}", 50);
+			require(!list.contains("bad1") && !list.contains("bad2"), "a refused plan must not be saved: " + list);
+		} finally {
+			deleteBlueprints(server, "bad1", "bad2");
+		}
 	}
 
 	private static Villager smartVillager(TestServerContext server, String name, double x, double y, double z) {
