@@ -55,6 +55,10 @@ public final class GuideContent {
 								+ "plan_build: counts the materials against what it carries and a chest.\n"
 								+ "start_build, stop_build, cancel_build, build_status: build, pause, end or check progress.\n\n"
 								+ "Put the blocks in a chest nearby; it gathers what is missing. Big builds ask you first."),
+			new Page("Teams",
+						"Group helpers into a team with one leader: \"make a team called builders with Bob as leader, add Alice and Rex\".\n"
+								+ "create_team, add_to_team, remove_from_team, disband_team, list_teams: make, change, end or list teams.\n\n"
+								+ "A helper is in one team at a time. The most helpers in a team is set by teams.maxSize in the config (default 5)."),
 				new Page("Items and chests",
 					"Every villager has its own inventory and can only use what it carries.\n\n"
 							+ "pick_up, drop: collect or drop items.\n"

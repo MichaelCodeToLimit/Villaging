@@ -40,6 +40,7 @@ public final class ToolHandlers {
 		RelayHandlers.register();
 		PeopleHandlers.register();
 		BuildHandlers.register();
+		TeamHandlers.register();
 	}
 
 	/** Registers the Foundation tools; safe to call more than once. */

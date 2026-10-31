@@ -83,6 +83,7 @@ public class Villaging implements ModInitializer {
 		VillagerBrains.init();
 		VillagerInventories.init();
 		BuildJobs.init();
+		com.villaging.team.Teams.init();
 		ToolHandlers.registerBase();
 		ToolHandlers.registerAbilities();
 		AbilityTools.registerAll();

@@ -19,5 +19,6 @@ public final class AbilityTools {
 		CommandTools.register();
 		PeopleTools.register();
 		BuildTools.register();
+		TeamTools.register();
 	}
 }
