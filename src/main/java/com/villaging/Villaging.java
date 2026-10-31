@@ -1,6 +1,7 @@
 package com.villaging;
 
 import com.villaging.command.CommandService.CommandResult;
+import com.villaging.build.BuildJobs;
 import com.villaging.command.HelperCommands;
 import com.villaging.command.VillagingRuntime;
 import com.villaging.config.VillagingConfig;
@@ -79,6 +80,7 @@ public class Villaging implements ModInitializer {
 		ModItems.init();
 		VillagerBrains.init();
 		VillagerInventories.init();
+		BuildJobs.init();
 		ToolHandlers.registerBase();
 		ToolHandlers.registerAbilities();
 		AbilityTools.registerAll();
