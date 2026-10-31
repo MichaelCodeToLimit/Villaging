@@ -167,4 +167,40 @@ class VillagingConfigTest {
 		assertEquals("ollama", backup.provider());
 		assertEquals("", backup.fallbackProvider());
 	}
+
+	@Test
+	void buildSettingsDefaultToTheSpecValues() {
+		assertEquals(new BuildSettings(20000, 50, 6, 64, 3), VillagingConfig.defaults().build());
+	}
+
+	@Test
+	void buildSettingsAreReadFromTheFileAndBadValuesFallBack() throws Exception {
+		Path file = dir.resolve("villaging.json");
+		Files.writeString(file, "{\"build\":{\"buildTicksPerBlock\":2,\"maxActiveBuilds\":0,\"buildAskThreshold\":-5,\"maxSavedBlueprints\":10}}");
+		BuildSettings b = VillagingConfig.load(file).build();
+		assertEquals(2, b.buildTicksPerBlock());
+		assertEquals(3, b.maxActiveBuilds());
+		assertEquals(64, b.buildAskThreshold());
+		assertEquals(10, b.maxSavedBlueprints());
+		assertEquals(20000, b.maxBlueprintBlocks());
+	}
+
+	@Test
+	void aFileWithoutBuildSettingsGetsTheDefaults() throws Exception {
+		Path file = dir.resolve("villaging.json");
+		Files.writeString(file, "{\"provider\":\"ollama\"}");
+		assertEquals(BuildSettings.defaults(), VillagingConfig.load(file).build());
+	}
+
+	@Test
+	void savingAKeyKeepsTheBuildSettings() throws Exception {
+		Path file = dir.resolve("villaging.json");
+		Files.writeString(file, "{\"build\":{\"buildTicksPerBlock\":2},\"fallbackProvider\":\"ollama\"}");
+		VillagingConfig config = VillagingConfig.load(file).withKey("gemini", "k");
+		assertEquals(2, config.build().buildTicksPerBlock());
+		assertEquals(2, config.backupConfig().build().buildTicksPerBlock());
+		Path saved = dir.resolve("saved.json");
+		config.save(saved);
+		assertEquals(2, VillagingConfig.load(saved).build().buildTicksPerBlock());
+	}
 }
