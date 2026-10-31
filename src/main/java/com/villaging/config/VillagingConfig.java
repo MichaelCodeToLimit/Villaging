@@ -25,9 +25,20 @@ public record VillagingConfig(
 		int maxScriptSeconds,
 		int maxScriptDepth,
 		String fallbackProvider,
-		BuildSettings build) {
+		BuildSettings build,
+		TeamSettings teams) {
 
 	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+
+	/** Without team settings: the setting list before teams, so existing code that builds a config keeps working. */
+	public VillagingConfig(String provider, String apiKey, String model, String cloudUrl, String ollamaUrl,
+			String ollamaModel, String geminiModel, String geminiUrl, int maxSteps, int callsPerMinute, int actionRange,
+			boolean respectProtection, boolean allowBreakBedrock, int maxScriptSteps, int maxScriptSeconds,
+			int maxScriptDepth, String fallbackProvider, BuildSettings build) {
+		this(provider, apiKey, model, cloudUrl, ollamaUrl, ollamaModel, geminiModel, geminiUrl, maxSteps, callsPerMinute,
+				actionRange, respectProtection, allowBreakBedrock, maxScriptSteps, maxScriptSeconds, maxScriptDepth,
+				fallbackProvider, build, TeamSettings.defaults());
+	}
 
 	/** Without build settings: the setting list before blueprints, so existing code that builds a config keeps working. */
 	public VillagingConfig(String provider, String apiKey, String model, String cloudUrl, String ollamaUrl,
@@ -51,7 +62,7 @@ public record VillagingConfig(
 	public static VillagingConfig defaults() {
 		return new VillagingConfig("cloud", "", "claude-sonnet-5-5", "https://api.anthropic.com",
 				"http://localhost:11434", "llama3.1:8b", "gemini-3.5-flash", "https://generativelanguage.googleapis.com",
-				20, 10, 64, true, false, 500, 300, 3, "", BuildSettings.defaults());
+				20, 10, 64, true, false, 500, 300, 3, "", BuildSettings.defaults(), TeamSettings.defaults());
 	}
 
 	public static VillagingConfig load(Path file) {
@@ -84,7 +95,7 @@ public record VillagingConfig(
 					raw.maxScriptSeconds != null && raw.maxScriptSeconds > 0 ? raw.maxScriptSeconds : defaults.maxScriptSeconds,
 					raw.maxScriptDepth != null && raw.maxScriptDepth > 0 ? raw.maxScriptDepth : defaults.maxScriptDepth,
 					raw.fallbackProvider == null ? "" : raw.fallbackProvider.strip(),
-					BuildSettings.from(raw.build));
+					BuildSettings.from(raw.build), TeamSettings.from(raw.teams));
 		} catch (IOException | RuntimeException e) {
 			Villaging.LOGGER.error("Could not read {}; using defaults", file, e);
 			return defaults;
@@ -95,14 +106,14 @@ public record VillagingConfig(
 	public VillagingConfig withKey(String newProvider, String newKey) {
 		return new VillagingConfig(newProvider, newKey, model, cloudUrl, ollamaUrl, ollamaModel, geminiModel, geminiUrl,
 				maxSteps, callsPerMinute, actionRange, respectProtection, allowBreakBedrock, maxScriptSteps,
-				maxScriptSeconds, maxScriptDepth, fallbackProvider, build);
+				maxScriptSeconds, maxScriptDepth, fallbackProvider, build, teams);
 	}
 
 	/** The same settings with the backup AI as the main one and no backup of its own. */
 	public VillagingConfig backupConfig() {
 		return new VillagingConfig(fallbackProvider, apiKey, model, cloudUrl, ollamaUrl, ollamaModel, geminiModel, geminiUrl,
 				maxSteps, callsPerMinute, actionRange, respectProtection, allowBreakBedrock, maxScriptSteps,
-				maxScriptSeconds, maxScriptDepth, "", build);
+				maxScriptSeconds, maxScriptDepth, "", build, teams);
 	}
 
 	/**
@@ -164,5 +175,6 @@ public record VillagingConfig(
 		Integer maxScriptDepth;
 		String fallbackProvider;
 		BuildSettings.Raw build;
+		TeamSettings.Raw teams;
 	}
 }
