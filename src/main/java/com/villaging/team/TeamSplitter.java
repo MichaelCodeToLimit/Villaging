@@ -5,15 +5,14 @@ import com.villaging.blueprint.BlueprintException;
 import com.villaging.blueprint.BuildOrder;
 import com.villaging.blueprint.Cell;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeMap;
 
 /**
- * Cuts a blueprint into slices, one per team member. Slices follow whole layers where they can, so members build
- * floor-by-floor side by side; a layer bigger than a fair share is cut by position. Pure.
+ * Cuts a blueprint into slices, one per team member. Slices are vertical slabs (whole columns of the longer side), so members build
+ * side by side and every block has its support inside the same slice. Pure.
  */
 public final class TeamSplitter {
 	private TeamSplitter() {
@@ -24,35 +23,15 @@ public final class TeamSplitter {
 		int wanted = Math.max(1, parts);
 		Set<Cell> placeable = new HashSet<>(BuildOrder.order(whole));
 		int total = placeable.size();
-		int share = Math.max(1, (total + wanted - 1) / wanted);
 
-		// Units: each layer, or pieces of a layer when it alone is more than a fair share.
+		// Units: whole columns along the longer side, so each helper gets complete walls and floors it can build on its own.
+		boolean alongX = whole.sizeX() >= whole.sizeZ();
 		List<List<Cell>> units = new ArrayList<>();
-		TreeMap<Integer, List<Cell>> layers = new TreeMap<>();
+		TreeMap<Integer, List<Cell>> columns = new TreeMap<>();
 		for (Cell c : whole.cells()) {
-			layers.computeIfAbsent(c.y(), y -> new ArrayList<>()).add(c);
+			columns.computeIfAbsent(alongX ? c.x() : c.z(), k -> new ArrayList<>()).add(c);
 		}
-		for (List<Cell> layer : layers.values()) {
-			layer.sort(Comparator.comparingInt(Cell::x).thenComparingInt(Cell::z));
-			int weight = (int) layer.stream().filter(placeable::contains).count();
-			if (weight <= share) {
-				units.add(layer);
-				continue;
-			}
-			List<Cell> piece = new ArrayList<>();
-			int inPiece = 0;
-			for (Cell c : layer) {
-				piece.add(c);
-				if (placeable.contains(c) && ++inPiece == share) {
-					units.add(piece);
-					piece = new ArrayList<>();
-					inPiece = 0;
-				}
-			}
-			if (!piece.isEmpty()) {
-				units.add(piece);
-			}
-		}
+		units.addAll(columns.values());
 
 		// Pack consecutive units into slices; the last slice takes whatever is left.
 		List<List<Cell>> slices = new ArrayList<>();

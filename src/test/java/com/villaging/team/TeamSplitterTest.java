@@ -45,6 +45,23 @@ class TeamSplitterTest {
 	}
 
 	@Test
+	void slicesAreVerticalSlabsSoNoSliceNeedsAnotherToStandOn() throws BlueprintException {
+		Blueprint whole = cottage();
+		List<Blueprint> parts = TeamSplitter.split(whole, 3, "c_");
+		Set<Integer> usedByEarlier = new HashSet<>();
+		for (Blueprint p : parts) {
+			Set<Integer> mine = new HashSet<>();
+			for (Cell c : p.cells()) {
+				mine.add(whole.sizeX() >= whole.sizeZ() ? c.x() : c.z());
+			}
+			for (int line : mine) {
+				assertFalse(usedByEarlier.contains(line), "column " + line + " is in two slices");
+			}
+			usedByEarlier.addAll(mine);
+		}
+	}
+
+	@Test
 	void singlePartReturnsAllCells() throws BlueprintException {
 		Blueprint whole = cottage();
 		List<Blueprint> parts = TeamSplitter.split(whole, 1, "c_");

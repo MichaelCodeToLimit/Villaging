@@ -1842,13 +1842,14 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 		resetArena(server);
 		makeKing(server);
 		Villager alma = smartVillager(server, "Alma", 0, 100, 0);
-		Villager bram = smartVillager(server, "Bram", 2, 100, 0);
+		Villager bram = smartVillager(server, "Bram", -5, 100, 0);
 		VillagingConfig config = teamConfig(maxActive);
 		try {
 			String made = tool(server, alma, config, "use_template",
 					"{\"name\":\"teamhut\",\"template\":\"cottage\",\"width\":5,\"depth\":5,\"height\":3,\"style\":\"stone\",\"roof\":\"flat\"}", 100);
 			require(made.startsWith("ok"), "use_template said: " + made);
-			require(tool(server, alma, config, "create_team", "{\"name\":\"crew\",\"leader\":\"Alma\",\"members\":[\"Bram\"]}", 100).startsWith("ok"), "no team");
+			String teamMade = tool(server, alma, config, "create_team", "{\"name\":\"crew\",\"leader\":\"Alma\",\"members\":[\"Bram\"]}", 100);
+			require(teamMade.startsWith("ok"), "create_team said: " + teamMade);
 			Blueprint bp = savedBlueprint(server, "teamhut");
 			stock(server, alma, bp, 0);
 			stock(server, bram, bp, 0);
