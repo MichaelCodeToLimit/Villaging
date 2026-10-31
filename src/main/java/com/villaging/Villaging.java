@@ -1,7 +1,9 @@
 package com.villaging;
 
 import com.villaging.command.CommandService.CommandResult;
+import com.villaging.build.BuildJob;
 import com.villaging.build.BuildJobs;
+import com.villaging.build.BuildRegistry;
 import com.villaging.command.HelperCommands;
 import com.villaging.command.VillagingRuntime;
 import com.villaging.config.VillagingConfig;
@@ -143,6 +145,7 @@ public class Villaging implements ModInitializer {
 			VillagerSpeech.clear();
 			TalkHold.clear();
 			HelperCommands.clear();
+			BuildRegistry.clear();
 		});
 		ServerTickEvents.END_LEVEL_TICK.register(ActionManager.INSTANCE::tick);
 		ServerTickEvents.END_SERVER_TICK.register(server -> {
@@ -209,6 +212,7 @@ public class Villaging implements ModInitializer {
 				PendingQuestions.INSTANCE.cancelFor(villager.getId());
 				ScriptManager.INSTANCE.cancel(villager);
 				TalkHold.release(villager);
+				BuildRegistry.finish(villager.getUUID());
 			}
 		});
 
@@ -216,6 +220,8 @@ public class Villaging implements ModInitializer {
 		ServerEntityEvents.ENTITY_LOAD.register((entity, level) -> {
 			if (entity instanceof PathfinderMob villager && Kinds.canBeSmart(entity)) {
 				VillagerSpeech.heal(villager);
+				// A build that was running when the chunk or world was saved never carries on by itself.
+				BuildJobs.get(villager).ifPresent(job -> BuildJobs.set(villager, BuildJob.afterReload(job)));
 			}
 		});
 

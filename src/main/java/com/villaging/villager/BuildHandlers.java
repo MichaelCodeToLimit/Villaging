@@ -13,8 +13,10 @@ import com.villaging.blueprint.ShapePlan;
 import com.villaging.blueprint.Templates;
 import com.villaging.build.BlueprintFiles;
 import com.villaging.build.Blocks;
+import com.villaging.build.BuildAction;
 import com.villaging.build.BuildJob;
 import com.villaging.build.BuildJobs;
+import com.villaging.build.BuildRegistry;
 import com.villaging.build.Stockpile;
 import com.villaging.config.BuildSettings;
 import java.io.IOException;
@@ -40,6 +42,10 @@ final class BuildHandlers {
 		ToolHandlers.register("list_blueprints", BuildHandlers::list);
 		ToolHandlers.register("show_blueprint", BuildHandlers::show);
 		ToolHandlers.register("plan_build", BuildHandlers::planBuild);
+		ToolHandlers.register("start_build", BuildHandlers::start);
+		ToolHandlers.register("build_status", BuildHandlers::status);
+		ToolHandlers.register("stop_build", BuildHandlers::stop);
+		ToolHandlers.register("cancel_build", BuildHandlers::cancel);
 	}
 
 	static CompletableFuture<String> done(String text) {
@@ -220,7 +226,7 @@ final class BuildHandlers {
 		MaterialPlanner.Report report = MaterialPlanner.plan(b, carried, inChest);
 
 		BuildJobs.set(helper, new BuildJob(name, new BuildJob.Pos(anchor.getX(), anchor.getY(), anchor.getZ()), turns,
-				chest.map(p -> new BuildJob.Pos(p.getX(), p.getY(), p.getZ())), 0, order.size(), BuildJob.Status.PLANNED, ""));
+				chest.map(p -> new BuildJob.Pos(p.getX(), p.getY(), p.getZ())), 0, order.size(), BuildJob.Status.PLANNED, blocked > 0 ? "blocked:" + blocked : ""));
 
 		StringBuilder sb = new StringBuilder("planned " + name + " at " + anchor.toShortString() + (turns == 0 ? "" : ", turned " + turns * 90 + " degrees")
 				+ ": " + order.size() + " blocks. ");
@@ -248,5 +254,80 @@ final class BuildHandlers {
 		items.entrySet().stream().sorted(Map.Entry.comparingByKey()).limit(8)
 				.forEach(e -> parts.add(e.getValue() + " " + MaterialPlanner.readable(e.getKey())));
 		return String.join(", ", parts) + (items.size() > 8 ? ", and more" : "");
+	}
+
+	private static CompletableFuture<String> start(ToolContext ctx, JsonObject args) {
+		PathfinderMob helper = ctx.villager();
+		Optional<BuildJob> found = BuildJobs.get(helper);
+		if (found.isEmpty()) {
+			return failed("there is no build planned yet; use plan_build first");
+		}
+		BuildJob job = found.get();
+		if (BuildRegistry.isBuilding(helper.getUUID())) {
+			return failed("I am already building " + job.blueprint());
+		}
+		Optional<Blueprint> loaded = load(ctx, job.blueprint());
+		if (loaded.isEmpty()) {
+			return noSuch(ctx, job.blueprint());
+		}
+		Blueprint turned = loaded.get().rotated(job.rotation());
+		boolean firstStart = job.status() == BuildJob.Status.PLANNED;
+		boolean big = job.total() > BlueprintFiles.settings().buildAskThreshold() || job.note().startsWith("blocked:");
+		if (firstStart && big && helper.level() instanceof ServerLevel level) {
+			Map<String, Integer> inChest = job.stockpile().map(p -> Stockpile.read(level, new BlockPos(p.x(), p.y(), p.z()))).orElse(Map.of());
+			String missing = MaterialPlanner.plan(turned, Stockpile.carried(helper), inChest).describeMissing();
+			String question = "Build " + job.blueprint() + " (" + job.total() + " blocks) at " + job.anchor().x() + "," + job.anchor().y() + ","
+					+ job.anchor().z() + "?" + (missing.isEmpty() ? "" : " Short of: " + missing + ".")
+					+ (job.note().startsWith("blocked:") ? " " + job.note().substring("blocked:".length()) + " spots are occupied and will be skipped." : "");
+			return AskService.confirmThen(ctx, question,
+					yes -> yes ? begin(ctx, helper, job, turned) : "ok: not building; the plan is kept, say start_build when you want it");
+		}
+		String result = begin(ctx, helper, job, turned);
+		return CompletableFuture.completedFuture(result);
+	}
+
+	private static String begin(ToolContext ctx, PathfinderMob helper, BuildJob job, Blueprint turned) {
+		int max = BlueprintFiles.settings().maxActiveBuilds();
+		if (!BuildRegistry.tryStart(helper.getUUID(), max)) {
+			return "failed: " + BuildRegistry.count() + " builds are already running in this world (the most is " + max + "); try again when one finishes";
+		}
+		ActionManager.INSTANCE.run(helper, new BuildAction(ctx.kingId(), ctx.config(), job, turned));
+		return "ok: building " + job.blueprint() + " (" + job.total() + " blocks). I carry on by myself and will say when it is done or if I run short.";
+	}
+
+	private static CompletableFuture<String> status(ToolContext ctx, JsonObject args) {
+		Optional<BuildJob> found = BuildJobs.get(ctx.villager());
+		if (found.isEmpty()) {
+			return done("no build is planned or running");
+		}
+		BuildJob j = found.get();
+		int percent = j.total() == 0 ? 0 : j.done() * 100 / j.total();
+		String state = switch (j.status()) {
+			case PLANNED -> "planned but not started; say start_build";
+			case RUNNING -> "building (about " + percent + "% done, " + j.done() + " of " + j.total() + " blocks at the last save)";
+			case PAUSED_MISSING_MATERIAL -> "paused, short of materials (" + j.note() + "); " + j.done() + " of " + j.total() + " blocks done";
+			case PAUSED_BLOCKED -> "paused because spots are blocked; " + j.done() + " of " + j.total() + " blocks done";
+			case PAUSED_BY_KING -> "paused at " + j.done() + " of " + j.total() + " blocks; say start_build to carry on";
+		};
+		return done(j.blueprint() + " at " + j.anchor().x() + "," + j.anchor().y() + "," + j.anchor().z() + ": " + state);
+	}
+
+	private static CompletableFuture<String> stop(ToolContext ctx, JsonObject args) {
+		PathfinderMob helper = ctx.villager();
+		if (BuildRegistry.isBuilding(helper.getUUID())) {
+			ActionManager.INSTANCE.stop(helper);
+			return done("the build is paused; say start_build to carry on");
+		}
+		return done(BuildJobs.get(helper).isPresent() ? "the build is already paused" : "nothing is being built");
+	}
+
+	private static CompletableFuture<String> cancel(ToolContext ctx, JsonObject args) {
+		PathfinderMob helper = ctx.villager();
+		if (BuildRegistry.isBuilding(helper.getUUID())) {
+			ActionManager.INSTANCE.stop(helper);
+		}
+		boolean had = BuildJobs.get(helper).isPresent();
+		BuildJobs.clear(helper);
+		return done(had ? "the build is cancelled; the blocks already placed stay" : "there was no build to cancel");
 	}
 }
