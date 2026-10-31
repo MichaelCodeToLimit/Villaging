@@ -9,6 +9,7 @@ Turn villagers and iron and copper golems into **smart AI helpers** that you com
 - **They do real work.** Mine, place and break blocks, chop trees, farm, fish, craft, smelt, brew, fight, guard, carry items, work with chests, and run long jobs as step-by-step plans.
 - **Build for you.** "Build a stone cottage by the river": a helper designs it (or uses a ready-made cottage, tower, wall, bridge or castle), counts the materials against what it carries and a chest, asks you, and builds it block by block. If it runs short it tells you exactly what it needs.
 - **Recruit more helpers.** Say "recruit the iron golem". You approve, then up to 5 villagers or golems become smart.
+- **Work in teams.** Make a team with a leader ("team builders: Bob leads, add Alice and Rex"). Tell the leader a job and the team does it together, including building one structure side by side.
 - **Rename them** and choose what they call you ("call me Boss").
 - **Safe by design.** Risky acts (lava, fire, TNT, wrecking big areas) always ask you first in a pop-up. They never hurt players or pets, and they respect spawn protection.
 - **A built-in guide** opens the first time you play. Open it again with `/villaging guide`.
@@ -27,4 +28,4 @@ Villagers think using an AI service that you choose. Your messages, and what a v
 
 ## Coming later
 
-Saving your own builds as blueprints, ranks (teams of helpers working together), and a server plugin.
+Saving your own builds as blueprints, importing structure files, and a server plugin.

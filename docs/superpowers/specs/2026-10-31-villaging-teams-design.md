@@ -35,7 +35,7 @@ Rules: a helper is in at most one team; the leader is always a member; size <= `
 Per-world persistent state keyed by team name (Fabric attachment on the leader entity, same pattern as `BuildJobs`), with a lookup from helper UUID to team name rebuilt on load. Entity unload does not delete a team. Leader death disbands it and tells surviving members.
 
 ### TeamSplitter (pure)
-`split(Blueprint, memberCount) -> List<Slice>`; a slice is a set of cells. Cuts by layer (y) first, then balances by cell count so no slice exceeds ceil(total/n) by more than one layer's width. The union of slices equals the blueprint and slices never overlap. A blueprint with fewer layers than members uses fewer slices.
+`split(Blueprint, memberCount) -> List<Blueprint>`; a slice is a subset of the cells. Cuts vertical slabs (whole columns along the longer horizontal side) balanced by cell count, so every block has its support inside its own slice (layer slices failed in the game: upper layers cannot be placed before the other helper builds the layer below). The union of slices equals the blueprint and slices never overlap. A blueprint with fewer columns than members uses fewer slices.
 
 ### Tools
 - King only, any helper may be the target: `create_team(name, leader, members[])`, `add_to_team(team, helper)`, `remove_from_team(team, helper)`, `disband_team(team)`, `list_teams()`.

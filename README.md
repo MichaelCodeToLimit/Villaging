@@ -7,7 +7,7 @@ set of safe tools (the things a player's hands can do), never by running code.
 **Version 1.0.0.** A smart villager can talk, follow, walk, mine, place and use blocks, break
 areas, carry and trade items, work chests, craft, smelt, brew, chop trees, farm, fish, shear, milk, breed and tame
 animals, fight, guard, flee, sit and sleep. It can run whole plans for long jobs and ask you questions in a pop-up.
-Building from blueprints, ranks and chains of command beyond relaying orders are the next sub-projects (see
+Building from blueprints and teams with a leader are in; chains of command beyond that are the next sub-projects (see
 `docs/superpowers/specs/`).
 
 ## Setup
@@ -38,6 +38,7 @@ Building from blueprints, ranks and chains of command beyond relaying orders are
 | `ollamaUrl` / `ollamaModel` | `http://localhost:11434` / `llama3.1:8b` | local model |
 | `fallbackProvider` | empty (off) | backup AI used when the main one runs out of quota, is overloaded or unreachable: `ollama`, `gemini` or `cloud` (must differ from `provider`; a keyed backup uses the same `apiKey`). A failing main AI rests for a minute so messages are not delayed. Example: `"provider": "gemini"` with `"fallbackProvider": "ollama"` keeps your villagers working on a local model when Gemini's free allowance is used up. |
 | `build` | see Building | `buildTicksPerBlock`, `buildAskThreshold`, `maxActiveBuilds`, `maxBlueprintBlocks`, `maxSavedBlueprints` |
+| `teams` | `{"maxSize": 5}` | `maxSize`: most helpers in one team, leader included (2 to 20) |
 | `maxSteps` | 20 | model calls per command |
 | `callsPerMinute` | 10 | per-villager rate limit (protects your bill) |
 | `actionRange` | 64 | how far an order may send a villager |
@@ -75,6 +76,7 @@ The Crown is also in the creative inventory under Tools & Utilities.
 |---|---|
 | `/announcements <message>` | Speaks to every smart villager and golem within 64 blocks at once (up to 12, one every 1.5 seconds so the AI service is not flooded). Each answers in its own name. King only. |
 | `/villaging summon <name>` | Brings one helper to your side and stops what it was doing. A start of its name is enough (`al` finds Alma); if two names match it lists them. Needs no AI. King only. |
+| `/villaging team list`, `create <name> <leader>, <member>, ...`, `add <team> <helper>`, `remove <team> <helper>`, `disband <team>` | Make and manage teams without the AI. King only. |
 | `/villaging key` | Opens the AI key box. |
 | `/villaging guide` | Opens the first-time guide. |
 
@@ -128,9 +130,24 @@ the materials, asks you, then builds it block by block from the bottom up.
 - A villager only takes items from your inventory when you tell it to, shows you exactly what it wants, and waits for
   your yes.
 
+### Teams
+
+Group helpers into a team with one leader ("make a team called builders with Bob as leader, add Alice and Rex"). Talk to
+the leader; its AI hands out the work and the members do it at the same time. A helper is in one team at a time, and a team
+needs at least two helpers to take jobs. The most helpers in a team is `teams.maxSize` (default 5).
+
+| Tool | Who | What it does |
+|---|---|---|
+| `create_team`, `add_to_team`, `remove_from_team`, `disband_team`, `list_teams` | the king, through any helper | Make, change, end or list teams. Also `/villaging team ...`. |
+| `assign` | the leader | Passes a job to one member, as if the king said it. Every normal skill works: gathering, guarding, anything. |
+| `assign_build` | the leader | After `plan_build`, splits the build into vertical slabs, one per member, and they build together. Slices beyond `build.maxActiveBuilds` wait and start by themselves when one finishes. |
+| `team_status` | the leader | What each member is doing. |
+
+If the leader dies the team ends; if a member dies the leader says so and the team shrinks.
+
 ### Known limits
 - **Not yet:** enchanting and anvils (villagers have no experience levels yet), saving your own builds as blueprints and
-  importing structure files, and ranks (teams of helpers building together). These are separate releases.
+  importing structure files. These are separate releases.
 - **Building:** one helper builds one structure at a time; the AI's own designs are simple shapes (the ready-made designs and
   your saved ones look best), and a small local AI model designs worse than Gemini or Claude.
 - **Protection mods:** villagers act through a hidden fake player. Protection and claims mods can see it as a

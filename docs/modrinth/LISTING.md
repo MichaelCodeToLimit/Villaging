@@ -49,7 +49,7 @@ is stored in `config/villaging.json` on the computer or server running the world
 multiplayer server only the owner or an admin can set it. Ollama runs on your own machine and sends nothing online.
 
 ## Coming later
-Building from blueprints and ranks.
+Saving your own builds as blueprints and a server plugin.
 ```
 
 ## Version
@@ -118,6 +118,19 @@ Building from blueprints.
 - New tools: use_template, design_blueprint, list_blueprints, show_blueprint, plan_build, start_build, stop_build, cancel_build, build_status.
 - Helpers now sneak while placing blocks, so a block placed next to a door or chest is built against it and does not open it.
 - New "build" settings in config/villaging.json (speed, ask limit, builds at once, limits).
+```
+
+## Version 1.2.0 (update)
+
+File: `build/libs/villaging-1.2.0.jar`. Same loader, game version and Fabric API dependency.
+
+```markdown
+Teams.
+- Group helpers into a team with one leader: "make a team called builders with Bob as leader, add Alice and Rex". Also `/villaging team list|create|add|remove|disband` (king only, no AI needed).
+- Tell the leader a job and its AI hands out the work. `assign` passes a job to one member; `assign_build` splits a planned build into vertical slabs so the members build the same structure side by side. `team_status` shows what each is doing.
+- Builds beyond the "builds at once" limit wait and start by themselves when one finishes.
+- A helper is in one team at a time; a team needs two or more helpers to take jobs. New `teams.maxSize` setting in config/villaging.json (default 5, 2 to 20).
+- If the leader dies the team ends; if a member dies the leader says so.
 ```
 
 ## Before you upload (checklist)
