@@ -53,6 +53,19 @@ class TeamToolsTest {
 	}
 
 	@Test
+	void leaderToolsAreRegisteredAndValidate() {
+		Set<String> names = Tools.all().stream().map(t -> t.name()).collect(Collectors.toSet());
+		assertTrue(names.containsAll(List.of("assign", "team_status", "assign_build")));
+		assertTrue(validate("assign", "{\"member\":\"Alice\",\"task\":\"fetch 20 logs\"}").isEmpty());
+		assertTrue(validate("assign", "{\"member\":\" \",\"task\":\"fetch 20 logs\"}").isPresent());
+		assertTrue(validate("assign", "{\"member\":\"Alice\",\"task\":\"" + "x".repeat(501) + "\"}").isPresent());
+		assertTrue(validate("assign", "{\"member\":\"Alice\"}").isPresent());
+		assertTrue(validate("assign_build", "{\"blueprint\":\"stone_cottage\"}").isEmpty());
+		assertTrue(validate("assign_build", "{\"blueprint\":\"Bad Name\"}").isPresent());
+		assertEquals(Optional.empty(), validate("team_status", "{}"));
+	}
+
+	@Test
 	void otherKingToolsValidate() {
 		assertTrue(validate("add_to_team", "{\"team\":\"builders\",\"helper\":\"Rex\"}").isEmpty());
 		assertTrue(validate("add_to_team", "{\"team\":\"builders\"}").isPresent());

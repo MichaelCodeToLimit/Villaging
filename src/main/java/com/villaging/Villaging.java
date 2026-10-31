@@ -25,6 +25,7 @@ import com.villaging.net.CloseChatPayload;
 import com.villaging.net.OpenChatPayload;
 import com.villaging.villager.ChatTranscript;
 import com.villaging.villager.TalkHold;
+import com.villaging.villager.TeamBuilds;
 import com.villaging.ai.tools.AbilityTools;
 import com.villaging.ai.PendingQuestions;
 import com.villaging.villager.ActionManager;
@@ -147,12 +148,14 @@ public class Villaging implements ModInitializer {
 			TalkHold.clear();
 			HelperCommands.clear();
 			BuildRegistry.clear();
+			TeamBuilds.clear();
 		});
 		ServerTickEvents.END_LEVEL_TICK.register(ActionManager.INSTANCE::tick);
 		ServerTickEvents.END_SERVER_TICK.register(server -> {
 			VillagerSpeech.tick();
 			TalkHold.tick(server);
 			HelperCommands.tick(server);
+			TeamBuilds.tick(server);
 			PendingQuestions.INSTANCE.expire(System.nanoTime());
 		});
 

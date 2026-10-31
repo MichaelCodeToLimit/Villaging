@@ -13,6 +13,7 @@ import java.util.UUID;
 public final class BuildRegistry {
 	private static final Set<UUID> ACTIVE = new HashSet<>();
 	private static final Map<UUID, String> LAST_WAKE = new HashMap<>();
+	private static boolean slotFreed;
 
 	private BuildRegistry() {
 	}
@@ -27,7 +28,16 @@ public final class BuildRegistry {
 	}
 
 	public static void finish(UUID helper) {
-		ACTIVE.remove(helper);
+		if (ACTIVE.remove(helper)) {
+			slotFreed = true;
+		}
+	}
+
+	/** True once after a build place has been freed since the last call (so waiting team builds can try to start). */
+	public static boolean consumeSlotFreed() {
+		boolean was = slotFreed;
+		slotFreed = false;
+		return was;
 	}
 
 	public static boolean isBuilding(UUID helper) {
@@ -54,5 +64,6 @@ public final class BuildRegistry {
 	public static void clear() {
 		ACTIVE.clear();
 		LAST_WAKE.clear();
+		slotFreed = false;
 	}
 }

@@ -41,6 +41,7 @@ public final class ToolHandlers {
 		PeopleHandlers.register();
 		BuildHandlers.register();
 		TeamHandlers.register();
+		TeamLeaderHandlers.register();
 	}
 
 	/** Registers the Foundation tools; safe to call more than once. */

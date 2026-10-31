@@ -16,6 +16,8 @@ import java.util.Optional;
 public final class TeamTools {
 	/** Most names one create_team call may list (the config's own limit is checked when it runs). */
 	public static final int MAX_LISTED = 20;
+	/** Longest job text a leader may pass on. */
+	public static final int MAX_TASK = 500;
 
 	private TeamTools() {
 	}
@@ -79,6 +81,29 @@ public final class TeamTools {
 		Tools.register(new ToolDef("disband_team", "End a team, when the king asks. The helpers stay smart helpers.",
 				object(prop("team", "string", "The team's name.")).required("team").build()),
 				(args, range, ox, oy, oz) -> teamRef(args));
+		Tools.register(new ToolDef("assign",
+				"Team leaders only: pass a job to one member of your team, in plain words. The member does it as if the king said it. "
+						+ "Use it to split gathering, guarding or any other work.",
+				object(prop("member", "string", "The member's name."),
+						prop("task", "string", "What they should do, up to " + MAX_TASK + " characters.")).required("member", "task").build()),
+				(args, range, ox, oy, oz) -> {
+					Optional<String> bad = ToolSchema.stringNonBlank(args, "member", 100);
+					return bad.isPresent() ? bad : ToolSchema.stringNonBlank(args, "task", MAX_TASK);
+				});
+		Tools.register(new ToolDef("assign_build",
+				"Team leaders only: after plan_build, split that build between all your team members so they build at the same time. "
+						+ "The king is asked first for big builds.",
+				object(prop("blueprint", "string", "The blueprint you planned with plan_build.")).required("blueprint").build()),
+				(args, range, ox, oy, oz) -> {
+					Optional<String> bad = ToolSchema.stringNonBlank(args, "blueprint", 32);
+					if (bad.isPresent()) {
+						return bad;
+					}
+					return com.villaging.blueprint.Blueprint.isValidName(args.get("blueprint").getAsString()) ? Optional.empty()
+							: Optional.of("\"blueprint\" must be a blueprint name like stone_cottage.");
+				});
+		Tools.register(new ToolDef("team_status", "Team leaders only: what each member of your team is doing.", object().build()),
+				(args, range, ox, oy, oz) -> Optional.empty());
 		Tools.register(new ToolDef("list_teams", "List the teams nearby, their leaders and members.", object().build()),
 				(args, range, ox, oy, oz) -> Optional.empty());
 	}

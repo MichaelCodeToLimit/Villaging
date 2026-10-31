@@ -51,15 +51,15 @@ public final class TeamHandlers {
 		return CompletableFuture.completedFuture(action.get());
 	}
 
-	private record Pick(PathfinderMob mob, String problem) {
+	record Pick(PathfinderMob mob, String problem) {
 	}
 
-	private static String nameOf(PathfinderMob mob) {
+	static String nameOf(PathfinderMob mob) {
 		return VillagerBrains.get(mob).name();
 	}
 
 	/** The helper called {@code query} among {@code pool}: a full name or an unambiguous start of one. */
-	private static Pick pick(ServerLevel level, List<PathfinderMob> pool, String query) {
+	static Pick pick(ServerLevel level, List<PathfinderMob> pool, String query) {
 		List<Helper> helpers = pool.stream().map(m -> new Helper(m.getId(), nameOf(m))).toList();
 		HelperRoster.Match match = HelperRoster.find(helpers, query);
 		if (match instanceof Ambiguous ambiguous) {
@@ -173,6 +173,13 @@ public final class TeamHandlers {
 		for (PathfinderMob mob : Teams.loadedMembers(level, found.get())) {
 			Teams.clear(mob);
 		}
+		java.nio.file.Path dir = com.villaging.build.BlueprintFiles.dir(level.getServer());
+		String prefix = com.villaging.team.TeamJobs.partPrefix(teamName);
+		for (String saved : com.villaging.blueprint.BlueprintStore.names(dir)) {
+			if (saved.startsWith(prefix)) {
+				com.villaging.blueprint.BlueprintStore.delete(dir, saved);
+			}
+		}
 		return "ok: team " + teamName + " is disbanded; its helpers stay smart helpers";
 	}
 
@@ -191,7 +198,7 @@ public final class TeamHandlers {
 		return lines.isEmpty() ? "ok: there are no teams yet" : "ok: " + String.join("; ", lines);
 	}
 
-	private static String names(List<PathfinderMob> mobs) {
+	static String names(List<PathfinderMob> mobs) {
 		return mobs.isEmpty() ? "none" : String.join(", ", mobs.stream().map(TeamHandlers::nameOf).toList());
 	}
 
