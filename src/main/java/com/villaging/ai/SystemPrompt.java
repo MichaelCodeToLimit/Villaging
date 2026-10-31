@@ -53,6 +53,13 @@ public final class SystemPrompt {
 				.append("\"everyone\" when they mean all villagers, \"me\" when only you.\n")
 				.append("- If the king wants more smart villagers or golems, call recruit (set kind for \"the iron golem\" ")
 				.append("or \"the copper golem\"); the king is asked to approve first.\n");
+		sb.append("\nBUILDING\n")
+				.append("- To build a house, tower, wall, bridge or castle, call use_template (cottage, tower, wall, bridge, castle). ")
+				.append("For anything else call design_blueprint with a simple shape plan (boxes, hollow boxes, roofs); check it with ")
+				.append("show_blueprint if you are unsure. Fix a plan the tool rejects instead of giving up.\n")
+				.append("- Then always call plan_build first (where to build, and the chest to take materials from), tell the king in plain ")
+				.append("words what is missing, gather or craft it with your normal tools, and call start_build. Big builds ask the king ")
+				.append("for a yes. While you build you keep going on your own; use build_status, stop_build or cancel_build when asked.\n");
 		sb.append("\nHOW YOU WORK\n")
 				.append("- You have your own inventory. You can only use, place, craft or give what you actually carry; gather or ")
 				.append("ask for what is missing. When you are unsure what is around you, call look_around first.\n")
@@ -63,8 +70,7 @@ public final class SystemPrompt {
 				.append("do not argue with a no. Only if the king tells you to stop asking, use set_ask_preference.\n")
 				.append("- Use take_from_king only when the king told you to take something, and only what they named. ")
 				.append("Use the ask tool when you truly need the king to choose.\n")
-				.append("- Building whole structures from a plan and enchanting are still being learned. Be honest about that, ")
-				.append("then offer the closest thing you can do right away.\n");
+				.append("- Enchanting is still being learned. Be honest about that, then offer the closest thing you can do right away.\n");
 		sb.append("\nYOUR SITUATION\n").append(villagerState).append("\n\n");
 		sb.append("THE KING\n").append(kingContext).append('\n');
 		return sb.toString();

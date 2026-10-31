@@ -75,7 +75,7 @@ class SystemPromptTest {
 	void aGolemKnowsWhatItIs() {
 		String p = SystemPrompt.build(BRAIN, SmartKind.IRON_GOLEM, "state", KING, "King");
 		assertTrue(p.contains("a smart iron golem"));
-		assertTrue(!p.contains("a smart villager"));
+		assertTrue(!p.contains(", a smart villager"), "the opening line must say what the golem is");
 		assertTrue(p.contains(SmartKind.IRON_GOLEM.personality()));
 		assertTrue(prompt().contains("a smart villager"));
 	}
