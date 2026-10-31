@@ -26,6 +26,7 @@ import com.villaging.net.OpenChatPayload;
 import com.villaging.villager.ChatTranscript;
 import com.villaging.villager.TalkHold;
 import com.villaging.villager.TeamBuilds;
+import com.villaging.villager.TeamHandlers;
 import com.villaging.ai.tools.AbilityTools;
 import com.villaging.ai.PendingQuestions;
 import com.villaging.villager.ActionManager;
@@ -37,6 +38,7 @@ import com.villaging.villager.VillagerInventories;
 import com.villaging.villager.ToolHandlers;
 import com.villaging.villager.VillagerSpeech;
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
@@ -217,6 +219,12 @@ public class Villaging implements ModInitializer {
 				ScriptManager.INSTANCE.cancel(villager);
 				TalkHold.release(villager);
 				BuildRegistry.finish(villager.getUUID());
+			}
+		});
+
+		ServerLivingEntityEvents.AFTER_DEATH.register((entity, source) -> {
+			if (entity instanceof PathfinderMob mob && Kinds.canBeSmart(entity) && mob.level() instanceof net.minecraft.server.level.ServerLevel level) {
+				TeamHandlers.helperDied(level, mob);
 			}
 		});
 

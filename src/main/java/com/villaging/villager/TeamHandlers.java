@@ -13,6 +13,7 @@ import com.villaging.team.Teams;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
@@ -146,6 +147,13 @@ public final class TeamHandlers {
 		List<PathfinderMob> pool = Teams.pool(origin);
 		Optional<Team> found = Teams.find(pool, teamName);
 		if (found.isEmpty()) {
+			// A helper can keep a copy of a team whose leader is gone; this clears it so it can join another team.
+			Pick stale = pick(level, pool, helperName);
+			Team old = stale.mob() == null ? null : stale.mob().getAttached(Teams.ATTACHMENT);
+			if (old != null && old.name().equals(teamName)) {
+				Teams.clear(stale.mob());
+				return "ok: " + nameOf(stale.mob()) + " is free of the old team " + teamName;
+			}
 			return "failed: there is no team called " + teamName + " here";
 		}
 		Pick helper = pick(level, pool, helperName);
@@ -181,6 +189,38 @@ public final class TeamHandlers {
 			}
 		}
 		return "ok: team " + teamName + " is disbanded; its helpers stay smart helpers";
+	}
+
+	/**
+	 * A smart helper died. If it led a team, the team ends and its other helpers are told; if it was a member, it leaves the
+	 * team and the leader says so. Members that are not loaded keep a stale copy that {@link #remove} can clear.
+	 */
+	public static void helperDied(ServerLevel level, PathfinderMob dead) {
+		Team team = dead.getAttached(Teams.ATTACHMENT);
+		if (team == null) {
+			return;
+		}
+		Optional<UUID> king = Kings.get(level.getServer()).king();
+		if (team.leader().equals(dead.getUUID())) {
+			for (PathfinderMob member : Teams.loadedMembers(level, team)) {
+				if (member != dead) {
+					Teams.clear(member);
+					king.ifPresent(k -> VillagerSpeech.say(level.getServer(), member, k,
+							"Our leader has fallen, so team " + team.name() + " is no more."));
+				}
+			}
+			return;
+		}
+		try {
+			Team smaller = team.without(dead.getUUID());
+			Teams.save(level, smaller);
+			if (level.getEntity(team.leader()) instanceof PathfinderMob leader && king.isPresent()) {
+				VillagerSpeech.say(level.getServer(), leader, king.get(), nameOf(dead) + " has fallen. Team " + team.name() + " has "
+						+ smaller.members().size() + " left.");
+			}
+		} catch (TeamException e) {
+			// not a member any more; nothing to change
+		}
 	}
 
 	public static String list(Entity origin) {

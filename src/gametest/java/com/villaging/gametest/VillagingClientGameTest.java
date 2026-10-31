@@ -180,6 +180,11 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 			attempt("blueprint build: stop pauses and a fresh start resumes without redoing blocks", () -> blueprintStopAndResume(context, server));
 			attempt("blueprint build: a big build asks the king and a no starts nothing", () -> blueprintAsksTheKing(context, server));
 			attempt("blueprint safety: banned blocks and oversized plans are refused with a reason", () -> blueprintRefusals(server));
+			attempt("team: the king makes, changes and ends teams, and strangers cannot", () -> teamBasics(server));
+			attempt("team: a leader's assign reaches the member as the king's order", () -> teamAssignReachesTheMember(server));
+			attempt("team: two helpers split a cottage and build every block", () -> teamBuild(context, server, 3));
+			attempt("team: a slice waits for a free build place and then finishes", () -> teamBuild(context, server, 1));
+			attempt("team: the leader dying frees the members", () -> teamLeaderDeathEndsTheTeam(server));
 			attempt("a command from a non-king is ignored", () -> forgedPacket(context, server));
 			attempt("speaking to an ordinary villager makes it smart (and the speaker king)", () -> speakingToAnOrdinaryVillager(context, server));
 			attempt("sneak-click opens the chat on an ordinary villager", () -> sneakClickOnAnOrdinaryVillager(context, server));
@@ -1744,6 +1749,131 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 			require(!list.contains("bad1") && !list.contains("bad2"), "a refused plan must not be saved: " + list);
 		} finally {
 			deleteBlueprints(server, "bad1", "bad2");
+		}
+	}
+
+	// --- team checks ---
+
+	private static VillagingConfig teamConfig(int maxActiveBuilds) {
+		VillagingConfig d = VillagingConfig.defaults();
+		return new VillagingConfig(d.provider(), d.apiKey(), d.model(), d.cloudUrl(), d.ollamaUrl(), d.ollamaModel(), d.geminiModel(),
+				d.geminiUrl(), d.maxSteps(), d.callsPerMinute(), d.actionRange(), d.respectProtection(), d.allowBreakBedrock(),
+				d.maxScriptSteps(), d.maxScriptSeconds(), d.maxScriptDepth(), "", new BuildSettings(20_000, 50, 1, 1000, maxActiveBuilds));
+	}
+
+	private static boolean inTeam(TestServerContext server, PathfinderMob v) {
+		return server.computeOnServer(srv -> com.villaging.team.Teams.teamOf(v).isPresent());
+	}
+
+	private void teamBasics(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager alma = smartVillager(server, "Alma", 3, 100, 0);
+		Villager bram = smartVillager(server, "Bram", -3, 100, 0);
+		Villager cleo = smartVillager(server, "Cleo", 0, 100, 5);
+		String made = tool(server, alma, "create_team", "{\"name\":\"crew\",\"leader\":\"Alma\",\"members\":[\"Bram\"]}", 100);
+		require(made.startsWith("ok") && made.contains("Leader Alma"), "create_team said: " + made);
+		require(inTeam(server, alma) && inTeam(server, bram) && !inTeam(server, cleo), "the team should hold exactly Alma and Bram");
+		String listed = tool(server, alma, "list_teams", "{}", 50);
+		require(listed.contains("crew") && listed.contains("Alma") && listed.contains("Bram"), "list_teams said: " + listed);
+
+		String twin = tool(server, alma, "create_team", "{\"name\":\"crew\",\"leader\":\"Cleo\",\"members\":[]}", 100);
+		require(twin.startsWith("failed") && twin.contains("already exists"), "a second team with the same name: " + twin);
+		String taken = tool(server, alma, "create_team", "{\"name\":\"other\",\"leader\":\"Cleo\",\"members\":[\"Bram\"]}", 100);
+		require(taken.startsWith("failed") && taken.contains("already in team crew"), "a helper in two teams: " + taken);
+		require(!inTeam(server, cleo), "a refused team must not change anyone");
+
+		UUID stranger = UUID.randomUUID();
+		String notKing = awaitResult(server, server.computeOnServer(srv -> {
+			MinecraftActionExecutor exec = new MinecraftActionExecutor(srv, alma, stranger, VillagingConfig.defaults());
+			return exec.execute(new ToolCall("t", "disband_team", com.google.gson.JsonParser.parseString("{\"team\":\"crew\"}").getAsJsonObject()));
+		}), 100);
+		require(notKing.startsWith("failed") && notKing.contains("only the king"), "someone who is not king changed a team: " + notKing);
+		require(inTeam(server, alma), "the team must survive a stranger's disband");
+
+		require(tool(server, alma, "add_to_team", "{\"team\":\"crew\",\"helper\":\"Cleo\"}", 100).startsWith("ok"), "add_to_team failed");
+		require(inTeam(server, cleo), "Cleo should be in the team now");
+		String leaderOut = tool(server, alma, "remove_from_team", "{\"team\":\"crew\",\"helper\":\"Alma\"}", 100);
+		require(leaderOut.startsWith("failed") && leaderOut.contains("leads team"), "removing the leader: " + leaderOut);
+		require(tool(server, alma, "remove_from_team", "{\"team\":\"crew\",\"helper\":\"Bram\"}", 100).startsWith("ok"), "remove_from_team failed");
+		require(!inTeam(server, bram), "Bram should be out of the team");
+		require(tool(server, alma, "disband_team", "{\"team\":\"crew\"}", 100).startsWith("ok"), "disband_team failed");
+		require(!inTeam(server, alma) && !inTeam(server, cleo), "a disbanded team leaves nobody in it");
+	}
+
+	private void teamAssignReachesTheMember(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager alma = smartVillager(server, "Alma", 3, 100, 0);
+		Villager bram = smartVillager(server, "Bram", -3, 100, 0);
+		require(tool(server, alma, "create_team", "{\"name\":\"crew\",\"leader\":\"Alma\",\"members\":[\"Bram\"]}", 100).startsWith("ok"), "no team");
+		String notLeader = tool(server, bram, "assign", "{\"member\":\"Alma\",\"task\":\"say hi\"}", 100);
+		require(notLeader.startsWith("failed") && notLeader.contains("only a team leader"), "a member used assign: " + notLeader);
+		ollama.script("{\"message\":{\"role\":\"assistant\",\"content\":\"On it, boss.\"}}");
+		String passed = tool(server, alma, "assign", "{\"member\":\"Bram\",\"task\":\"say hello to the king\"}", 100);
+		require(passed.startsWith("ok") && passed.contains("Bram"), "assign said: " + passed);
+		server.waitFor(srv -> ollama.requests.size() >= 1, 600);
+		String request = ollama.requests.get(0);
+		require(request.contains("Your team leader Alma passes on this order from the king") && request.contains("say hello to the king"),
+				"the member did not get the leader's order");
+		require(request.contains("You are in team crew, led by Alma"), "the member's prompt should know its team");
+		String status = tool(server, alma, "team_status", "{}", 100);
+		require(status.startsWith("ok") && status.contains("Bram") && status.contains("Alma"), "team_status said: " + status);
+	}
+
+	private void teamLeaderDeathEndsTheTeam(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager alma = smartVillager(server, "Alma", 3, 100, 0);
+		Villager bram = smartVillager(server, "Bram", -3, 100, 0);
+		Villager cleo = smartVillager(server, "Cleo", 0, 100, 5);
+		require(tool(server, alma, "create_team", "{\"name\":\"crew\",\"leader\":\"Alma\",\"members\":[\"Bram\",\"Cleo\"]}", 100).startsWith("ok"), "no team");
+		server.runCommand("kill @e[type=minecraft:villager,sort=nearest,limit=1,x=3,y=100,z=0]");
+		server.waitFor(srv -> !inTeamNow(bram) && !inTeamNow(cleo), 200);
+		require(!inTeam(server, bram) && !inTeam(server, cleo), "the members should be free when their leader dies");
+	}
+
+	private static boolean inTeamNow(PathfinderMob v) {
+		return com.villaging.team.Teams.teamOf(v).isPresent();
+	}
+
+	/** Two helpers split a cottage; with {@code maxActive} 1 the second must wait for the first to finish. */
+	private void teamBuild(ClientGameTestContext context, TestServerContext server, int maxActive) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager alma = smartVillager(server, "Alma", 0, 100, 0);
+		Villager bram = smartVillager(server, "Bram", 2, 100, 0);
+		VillagingConfig config = teamConfig(maxActive);
+		try {
+			String made = tool(server, alma, config, "use_template",
+					"{\"name\":\"teamhut\",\"template\":\"cottage\",\"width\":5,\"depth\":5,\"height\":3,\"style\":\"stone\",\"roof\":\"flat\"}", 100);
+			require(made.startsWith("ok"), "use_template said: " + made);
+			require(tool(server, alma, config, "create_team", "{\"name\":\"crew\",\"leader\":\"Alma\",\"members\":[\"Bram\"]}", 100).startsWith("ok"), "no team");
+			Blueprint bp = savedBlueprint(server, "teamhut");
+			stock(server, alma, bp, 0);
+			stock(server, bram, bp, 0);
+			String plan = tool(server, alma, config, "plan_build",
+					"{\"name\":\"teamhut\",\"x\":" + SITE.getX() + ",\"y\":" + SITE.getY() + ",\"z\":" + SITE.getZ() + ",\"rotation\":\"0\"}", 100);
+			require(plan.startsWith("ok"), "plan_build said: " + plan);
+			String result = tool(server, alma, config, "assign_build", "{\"blueprint\":\"teamhut\"}", 100);
+			require(result.startsWith("ok"), "assign_build said: " + result);
+			if (maxActive == 1) {
+				require(result.contains("1 helpers are building") && result.contains("1 are waiting"), "one slice should wait: " + result);
+			} else {
+				require(result.contains("2 helpers are building"), "both should start: " + result);
+			}
+			require(server.computeOnServer(srv -> BuildJobs.get(bram).map(j -> j.blueprint().startsWith("tcrew_")).orElse(false)),
+					"Bram should be building his own slice");
+			server.waitFor(srv -> BuildJobs.get(alma).isEmpty() && BuildJobs.get(bram).isEmpty()
+					&& !BuildRegistry.isBuilding(alma.getUUID()) && !BuildRegistry.isBuilding(bram.getUUID()), 16000);
+			int total = BuildOrder.order(bp).size();
+			int builtCount = built(server, bp, 0);
+			require(builtCount == total, "only " + builtCount + " of " + total + " blocks were built");
+			require(tool(server, alma, config, "disband_team", "{\"team\":\"crew\"}", 100).startsWith("ok"), "disband failed");
+			require(server.computeOnServer(srv -> BlueprintStore.names(BlueprintFiles.dir(srv)).stream().noneMatch(n -> n.startsWith("tcrew_"))),
+					"the saved slices should be deleted with the team");
+		} finally {
+			deleteBlueprints(server, "teamhut");
 		}
 	}
 
