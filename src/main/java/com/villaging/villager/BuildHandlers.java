@@ -328,6 +328,7 @@ final class BuildHandlers {
 		}
 		boolean had = BuildJobs.get(helper).isPresent();
 		BuildJobs.clear(helper);
+		BuildRegistry.forgetWake(helper.getUUID());
 		return done(had ? "the build is cancelled; the blocks already placed stay" : "there was no build to cancel");
 	}
 }

@@ -208,13 +208,17 @@ public final class BuildAction implements VillagerAction {
 		String text = next.note() + ", my king. Bring it to the chest or tell me to gather it, then say start_build.";
 		BuildJobs.set(helper, job.withDone(engine.done()).withStatus(BuildJob.Status.PAUSED_MISSING_MATERIAL, next.note()));
 		VillagerSpeech.say(level.getServer(), helper, kingId, text);
-		wake(helper, level, "(The build of " + job.blueprint() + " is paused: " + next.note() + ". Gather or craft it with your normal tools, "
-				+ "then call start_build.)");
+		// Once per distinct shortage: an AI that says start_build again without bringing anything must not be woken in a loop.
+		if (BuildRegistry.shouldWake(helper.getUUID(), next.note())) {
+			wake(helper, level, "(The build of " + job.blueprint() + " is paused: " + next.note() + ". Gather or craft it with your normal tools, "
+					+ "then call start_build.)");
+		}
 		return end(helper, Status.done("paused: " + next.note()));
 	}
 
 	private Status finished(PathfinderMob helper, String summary) {
 		BuildJobs.clear(helper);
+		BuildRegistry.forgetWake(helper.getUUID());
 		if (helper.level() instanceof ServerLevel level) {
 			VillagerSpeech.say(level.getServer(), helper, kingId, summary + " Your " + job.blueprint() + " is built, my king.");
 		}

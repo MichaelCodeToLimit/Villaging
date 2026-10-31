@@ -37,6 +37,7 @@ Building from blueprints, ranks and chains of command beyond relaying orders are
 | `cloudUrl` | `https://api.anthropic.com` | cloud base URL |
 | `ollamaUrl` / `ollamaModel` | `http://localhost:11434` / `llama3.1:8b` | local model |
 | `fallbackProvider` | empty (off) | backup AI used when the main one runs out of quota, is overloaded or unreachable: `ollama`, `gemini` or `cloud` (must differ from `provider`; a keyed backup uses the same `apiKey`). A failing main AI rests for a minute so messages are not delayed. Example: `"provider": "gemini"` with `"fallbackProvider": "ollama"` keeps your villagers working on a local model when Gemini's free allowance is used up. |
+| `build` | see Building | `buildTicksPerBlock`, `buildAskThreshold`, `maxActiveBuilds`, `maxBlueprintBlocks`, `maxSavedBlueprints` |
 | `maxSteps` | 20 | model calls per command |
 | `callsPerMinute` | 10 | per-villager rate limit (protects your bill) |
 | `actionRange` | 64 | how far an order may send a villager |
@@ -97,6 +98,28 @@ The Crown is also in the creative inventory under Tools & Utilities.
 
 Villagers have their own 36-slot inventory, saved with them. Nothing is conjured: they gather, craft and carry.
 
+### Building from blueprints
+
+Say what you want ("build a stone cottage by the river", "make a watchtower here, 10 high") and one helper designs it, checks
+the materials, asks you, then builds it block by block from the bottom up.
+
+| Tool | What it does |
+|---|---|
+| `use_template` | Saves a ready-made design: `cottage`, `tower`, `wall`, `bridge` or `castle`, with size, style (`stone`, `wood`, `brick`, `sandstone`, `dark`) and roof options. |
+| `design_blueprint` | The AI draws its own plan from simple shapes (box, hollow box, floor, walls, gable/flat/pyramid roof, cylinder, line, door, window). Up to 48 wide and deep, 64 high, 60 shapes. |
+| `list_blueprints`, `show_blueprint` | See the saved designs, or one layer of a design as text. |
+| `plan_build` | Chooses where (and turned 0, 90, 180 or 270 degrees), checks the site, and counts the materials against what the helper carries and a chest. Starts nothing. |
+| `start_build`, `stop_build`, `cancel_build`, `build_status` | Build, pause, end, or check progress. |
+
+- **Materials come first from the helper and a chest** (name one, or the nearest chest or barrel within 8 blocks is used). If something
+  runs out the helper stops, says exactly what it needs ("I need 12 more stone"), tells its AI so it can gather or craft it, and
+  carries on when you say `start_build`.
+- **Nothing is forced.** Occupied or protected spots are kept and reported; blocks are never broken to make room. Builds bigger than 64
+  blocks, or on a site with occupied spots, ask you first. A build survives a restart (it waits for `start_build`).
+- Blueprints are saved in the world, in `<world>/villaging/blueprints/`. Saving your own builds and importing structure files comes next.
+- Settings (in `config/villaging.json`, under `"build"`): `buildTicksPerBlock` (6; higher is slower), `buildAskThreshold` (64),
+  `maxActiveBuilds` (3 at once in the world), `maxBlueprintBlocks` (20000), `maxSavedBlueprints` (50).
+
 ### Questions and risky acts
 
 - Lava, fire, TNT and other explosives, and breaking large areas always ask you first in a pop-up dialog. You can say
@@ -106,9 +129,10 @@ Villagers have their own 36-slot inventory, saved with them. Nothing is conjured
   your yes.
 
 ### Known limits
-
-- **Not yet:** enchanting and anvils (villagers have no experience levels yet), building structures from blueprints,
-  and ranks. These are separate sub-projects.
+- **Not yet:** enchanting and anvils (villagers have no experience levels yet), saving your own builds as blueprints and
+  importing structure files, and ranks (teams of helpers building together). These are separate releases.
+- **Building:** one helper builds one structure at a time; the AI's own designs are simple shapes (the ready-made designs and
+  your saved ones look best), and a small local AI model designs worse than Gemini or Claude.
 - **Protection mods:** villagers act through a hidden fake player. Protection and claims mods can see it as a
   stranger and may refuse its actions even in your own claim. `respectProtection` only controls the checks this mod
   makes itself.

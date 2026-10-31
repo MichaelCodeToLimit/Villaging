@@ -106,6 +106,20 @@ Backup AI and a warmer local model.
 - New optional setting `fallbackProvider` in `config/villaging.json` (`ollama`, `gemini` or `cloud`). When your main AI runs out of free usage, is overloaded or unreachable, villagers switch to the backup automatically. The main AI rests for a minute after a failure so messages are not delayed. Off by default.
 ```
 
+## Version 1.1.0 (update)
+
+File: `build/libs/villaging-1.1.0.jar`. Same loader, game version and Fabric API dependency.
+
+```markdown
+Building from blueprints.
+- Tell a helper to build: "build a stone cottage by the river". It designs the plan (or uses a ready-made cottage, tower, wall, bridge or castle), counts the materials against what it carries and a chest, asks you, and builds it block by block from the bottom up.
+- If it runs out of a material it stops, says exactly what it needs ("I need 12 more stone"), and carries on when you say start again.
+- Nothing is forced: occupied or protected spots are kept and reported. Big builds ask you first. Builds survive a restart.
+- New tools: use_template, design_blueprint, list_blueprints, show_blueprint, plan_build, start_build, stop_build, cancel_build, build_status.
+- Helpers now sneak while placing blocks, so a block placed next to a door or chest is built against it and does not open it.
+- New "build" settings in config/villaging.json (speed, ask limit, builds at once, limits).
+```
+
 ## Before you upload (checklist)
 - [x] License: MIT everywhere (done).
 - [x] Automated checks: unit tests and the in-game suite (65 checks) pass on the release jar's code.
