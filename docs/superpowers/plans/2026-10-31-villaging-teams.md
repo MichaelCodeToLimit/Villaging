@@ -103,7 +103,7 @@
 - Consumes: Task 4 `TeamHandlers` helper methods (extract the same create/add/remove/disband logic into static methods `TeamHandlers.create(ServerPlayer-or-ctx...)` so command and tool share one path; no AI needed for commands).
 - Produces: `TeamCommands.parse(String text) -> Parsed`; command feedback uses `player.sendSystemMessage`.
 
-- [ ] **Step 1:** Tests: `parsesLeaderAndMembers` ("Bob and Alice, Rex" -> leader Bob? No: first name is leader: `Bob, Alice, Rex`), `acceptsAndSeparator`, `trimsAndDropsEmpty`, `emptyIsRejected`.
+- [ ] **Step 1:** Tests: `parsesLeaderAndMembers` ("Bob, Alice, Rex" -> leader Bob, members Alice and Rex; the first name is the leader), `acceptsAndSeparator`, `trimsAndDropsEmpty`, `emptyIsRejected`.
 - [ ] **Step 2:** Run. Expected: FAIL. **Step 3:** Implement parse + command wiring (king-only via the existing `onlyKing`). **Step 4:** Run test + `./gradlew build --offline -q`. Expected: PASS.
 - [ ] **Step 5:** Commit `Add /villaging team commands`.
 
