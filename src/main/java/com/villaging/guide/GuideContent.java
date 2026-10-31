@@ -47,7 +47,15 @@ public final class GuideContent {
 							+ "chop_tree: fell a whole tree.\n\n"
 							+ "run_script and stop_script: for long jobs (\"get 20 logs\") it writes a safe step-by-step plan "
 							+ "and runs it, so one order can do a lot."),
-			new Page("Items and chests",
+			new Page("Building",
+						"Say \"build a stone cottage here\". The villager uses:\n"
+								+ "use_template: a ready design (cottage, tower, wall, bridge, castle).\n"
+								+ "design_blueprint: its own plan, drawn from simple shapes.\n"
+								+ "list_blueprints, show_blueprint: see the saved designs.\n"
+								+ "plan_build: counts the materials against what it carries and a chest.\n"
+								+ "start_build, stop_build, cancel_build, build_status: build, pause, end or check progress.\n\n"
+								+ "Put the blocks in a chest nearby; it gathers what is missing. Big builds ask you first."),
+				new Page("Items and chests",
 					"Every villager has its own inventory and can only use what it carries.\n\n"
 							+ "pick_up, drop: collect or drop items.\n"
 							+ "give_to_king: hand you things.\n"
