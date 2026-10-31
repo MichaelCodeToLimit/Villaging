@@ -101,7 +101,8 @@ New commands.
 File: `build/libs/villaging-1.0.3.jar`. Same loader, game version and Fabric API dependency.
 
 ```markdown
-Backup AI.
+Backup AI and a warmer local model.
+- Ollama now keeps your local model loaded for 30 minutes between messages, so only the first answer is slow.
 - New optional setting `fallbackProvider` in `config/villaging.json` (`ollama`, `gemini` or `cloud`). When your main AI runs out of free usage, is overloaded or unreachable, villagers switch to the backup automatically. The main AI rests for a minute after a failure so messages are not delayed. Off by default.
 ```
 
