@@ -1,0 +1,74 @@
+name: Announce new Modrinth versions in Discord
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  announce:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Restore the last announced version
+        id: cache
+        uses: actions/cache/restore@v4
+        with:
+          path: last-version.txt
+          key: modrinth-last-version-never-matches
+          restore-keys: modrinth-last-version-
+
+      - name: Look up the newest version on Modrinth
+        id: modrinth
+        run: |
+          set -euo pipefail
+          curl -fsS -A "MichaelCodeToLimit/Villaging discord-announcer" \
+            "https://api.modrinth.com/v2/project/villaging/version" -o versions.json || { echo "found=no" >> "$GITHUB_OUTPUT"; exit 0; }
+          # newest first by publish date
+          jq -e 'length > 0' versions.json > /dev/null || { echo "found=no" >> "$GITHUB_OUTPUT"; exit 0; }
+          jq 'sort_by(.date_published) | reverse | .[0]' versions.json > newest.json
+          echo "found=yes" >> "$GITHUB_OUTPUT"
+          echo "id=$(jq -r .id newest.json)" >> "$GITHUB_OUTPUT"
+          echo "number=$(jq -r .version_number newest.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Post to Discord when it is new
+        if: steps.modrinth.outputs.found == 'yes'
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          VERSION_ID: ${{ steps.modrinth.outputs.id }}
+          NUMBER: ${{ steps.modrinth.outputs.number }}
+        run: |
+          set -euo pipefail
+          last=""
+          [ -f last-version.txt ] && last="$(cat last-version.txt)"
+          if [ "$last" = "$VERSION_ID" ]; then
+            echo "Already announced $NUMBER"
+            exit 0
+          fi
+          if [ -z "$last" ]; then
+            # first run: remember what is already out without announcing it
+            echo "First run: remembering $NUMBER without posting"
+            echo "$VERSION_ID" > last-version.txt
+            exit 0
+          fi
+          if [ -z "${WEBHOOK:-}" ]; then
+            echo "DISCORD_WEBHOOK_URL is not set"
+            exit 1
+          fi
+          jq -n --arg number "$NUMBER" --arg url "https://modrinth.com/mod/villaging/version/$NUMBER" \
+            --arg notes "$(jq -r '.changelog // ""' newest.json | head -c 900)" \
+            '{content: "A new version of Villaging is out! @everyone",
+              allowed_mentions: {parse: ["everyone"]},
+              embeds: [{title: ("Villaging " + $number), url: $url, description: $notes, color: 3066993,
+                        footer: {text: "Download on Modrinth"}}]}' > payload.json
+          curl -fsS -H "Content-Type: application/json" -d @payload.json "$WEBHOOK"
+          echo "$VERSION_ID" > last-version.txt
+
+      - name: Remember the version
+        if: steps.modrinth.outputs.found == 'yes'
+        uses: actions/cache/save@v4
+        with:
+          path: last-version.txt
+          key: modrinth-last-version-${{ steps.modrinth.outputs.id }}
