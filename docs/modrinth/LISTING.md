@@ -106,9 +106,9 @@ Backup AI and a warmer local model.
 - New optional setting `fallbackProvider` in `config/villaging.json` (`ollama`, `gemini` or `cloud`). When your main AI runs out of free usage, is overloaded or unreachable, villagers switch to the backup automatically. The main AI rests for a minute after a failure so messages are not delayed. Off by default.
 ```
 
-## Version 1.1.0 (update)
+## Version 1.0.4 (update)
 
-File: `build/libs/villaging-1.1.0.jar`. Same loader, game version and Fabric API dependency.
+File: `build/libs/villaging-1.0.4.jar`. Same loader, game version and Fabric API dependency.
 
 ```markdown
 Building from blueprints.
@@ -120,9 +120,9 @@ Building from blueprints.
 - New "build" settings in config/villaging.json (speed, ask limit, builds at once, limits).
 ```
 
-## Version 1.2.0 (update)
+## Version 1.0.5 (update)
 
-File: `build/libs/villaging-1.2.0.jar`. Same loader, game version and Fabric API dependency.
+File: `build/libs/villaging-1.0.5.jar`. Same loader, game version and Fabric API dependency.
 
 ```markdown
 Teams.

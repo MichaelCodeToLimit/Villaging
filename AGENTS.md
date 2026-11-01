@@ -12,7 +12,7 @@ Repository: https://github.com/MichaelCodeToLimit/Villaging (public, MIT, branch
 - Do not run anything else heavy at the same time (another Gradle build, a large Ollama model, a real Minecraft). Running out of memory
   killed the Gradle daemon once, and an overloaded machine made two checks time out (`Can't keep up` warnings in the log).
 - Screenshots from the game tests land in `build/run/clientGameTest/screenshots/` (`gradlew clean` removes them).
-- Current version: see `gradle.properties` (`version=`). 1.0.0 to 1.0.3 are released builds; 1.1.0 (blueprints) is merged to main; 1.2.0 (teams) is on branch `teams-1.2.0`.
+- Current version: see `gradle.properties` (`version=`). 1.0.0 to 1.0.3 are released builds; 1.0.4 (blueprints) and 1.0.5 (teams) are merged to main and numbered to follow the Modrinth count (1.0.6 to 1.0.9 next, then 1.2.0, 1.2.1 and so on).
   Build details: blueprint code is in `com.villaging.blueprint` (pure) and `com.villaging.build` (engine, job, build action); `.gitignore` ignores only the
   top-level `/build/` folder, so those packages are tracked.
 
@@ -62,9 +62,9 @@ Repository: https://github.com/MichaelCodeToLimit/Villaging (public, MIT, branch
   Paper 26.2). Same plugin channels and packets so the existing client works unchanged. Keys: per-player, plus an optional admin-set server key
   (`keyMode: player | server | both`, default both). Order: refactor with all checks green, then Paper skeleton (commands, keys, networking), then
   actions, kings, golems, crown. Write the spec to `docs/superpowers/specs/` and get the owner's approval before coding.
-- Blueprints: release 1.1.0 (engine, five templates, nine tools, build settings) is merged to main from plan
+- Blueprints: release 1.0.4 (engine, five templates, nine tools, build settings) is merged to main from plan
   `docs/superpowers/plans/2026-10-31-villaging-blueprints-engine.md` and spec `docs/superpowers/specs/2026-10-31-villaging-blueprints-design.md`.
   Still to do from the spec, each as its own plan: release 1.2.0 (`capture_area`, `.nbt` import/export, `/villaging blueprint` commands, the
-  "clear the site first" answer) and 1.3.0 (preview outline, `stairs_run`, `fill_palette_pattern`, `gatehouse`, polish); with teams taking 1.2.0 these move one release later. Teams (1.2.0): plan `docs/superpowers/plans/2026-10-31-villaging-teams.md`, spec `docs/superpowers/specs/2026-10-31-villaging-teams-design.md`.
+  "clear the site first" answer) and 1.3.0 (preview outline, `stairs_run`, `fill_palette_pattern`, `gatehouse`, polish); with teams taking 1.2.0 these move one release later. Teams (1.0.5): plan `docs/superpowers/plans/2026-10-31-villaging-teams.md`, spec `docs/superpowers/specs/2026-10-31-villaging-teams-design.md`.
 - Known smaller items (1.0.3 added Ollama `keep_alive: 30m` and the optional `fallbackProvider` backup AI):
   weapons never wear out; Infinity bow false failure; bed use only lies the fake player down.
