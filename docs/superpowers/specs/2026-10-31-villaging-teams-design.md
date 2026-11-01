@@ -1,6 +1,6 @@
 # Villaging teams (ranks) design
 
-Status: draft for review. Target release: 1.0.5 (first built as 1.2.0; renumbered to follow the Modrinth count).
+Status: draft for review. Target release: 1.0.4 (first built as 1.2.0; shipped together with blueprints, numbered to follow the Modrinth count).
 
 ## Goal
 
@@ -70,4 +70,4 @@ In-game: create a team; a two-member build covers every cell; a leader order rea
 
 ## Release
 
-Version 1.0.5. Update README, wiki, Modrinth changelog, guide page "Teams", AGENTS.md. Blueprint capture/import move to 1.3.0.
+Version 1.0.4. Update README, wiki, Modrinth changelog, guide page "Teams", AGENTS.md. Blueprint capture/import move to 1.3.0.

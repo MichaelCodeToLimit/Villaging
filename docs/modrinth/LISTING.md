@@ -111,26 +111,15 @@ Backup AI and a warmer local model.
 File: `build/libs/villaging-1.0.4.jar`. Same loader, game version and Fabric API dependency.
 
 ```markdown
-Building from blueprints.
+Building from blueprints, and teams.
 - Tell a helper to build: "build a stone cottage by the river". It designs the plan (or uses a ready-made cottage, tower, wall, bridge or castle), counts the materials against what it carries and a chest, asks you, and builds it block by block from the bottom up.
 - If it runs out of a material it stops, says exactly what it needs ("I need 12 more stone"), and carries on when you say start again.
 - Nothing is forced: occupied or protected spots are kept and reported. Big builds ask you first. Builds survive a restart.
-- New tools: use_template, design_blueprint, list_blueprints, show_blueprint, plan_build, start_build, stop_build, cancel_build, build_status.
+- Teams: group helpers under one leader ("make a team called builders with Bob as leader, add Alice and Rex"), or use `/villaging team list|create|add|remove|disband` (king only, no AI needed). Tell the leader a job and it hands out the work: `assign` for one member, `assign_build` to split a planned build so the members build side by side, `team_status` to see what each is doing.
+- Builds beyond the "builds at once" limit wait and start by themselves when one finishes. If the leader dies the team ends; if a member dies the leader says so.
+- New tools: use_template, design_blueprint, list_blueprints, show_blueprint, plan_build, start_build, stop_build, cancel_build, build_status, create_team, add_to_team, remove_from_team, disband_team, list_teams, assign, assign_build, team_status.
 - Helpers now sneak while placing blocks, so a block placed next to a door or chest is built against it and does not open it.
-- New "build" settings in config/villaging.json (speed, ask limit, builds at once, limits).
-```
-
-## Version 1.0.5 (update)
-
-File: `build/libs/villaging-1.0.5.jar`. Same loader, game version and Fabric API dependency.
-
-```markdown
-Teams.
-- Group helpers into a team with one leader: "make a team called builders with Bob as leader, add Alice and Rex". Also `/villaging team list|create|add|remove|disband` (king only, no AI needed).
-- Tell the leader a job and its AI hands out the work. `assign` passes a job to one member; `assign_build` splits a planned build into vertical slabs so the members build the same structure side by side. `team_status` shows what each is doing.
-- Builds beyond the "builds at once" limit wait and start by themselves when one finishes.
-- A helper is in one team at a time; a team needs two or more helpers to take jobs. New `teams.maxSize` setting in config/villaging.json (default 5, 2 to 20).
-- If the leader dies the team ends; if a member dies the leader says so.
+- New settings in config/villaging.json: "build" (speed, ask limit, builds at once, limits) and "teams" (maxSize, default 5).
 ```
 
 ## Before you upload (checklist)
