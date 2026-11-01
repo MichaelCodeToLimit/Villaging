@@ -101,22 +101,10 @@ New commands.
 File: `build/libs/villaging-1.0.3.jar`. Same loader, game version and Fabric API dependency.
 
 ```markdown
-Backup AI and a warmer local model.
-- Ollama now keeps your local model loaded for 30 minutes between messages, so only the first answer is slow.
-- New optional setting `fallbackProvider` in `config/villaging.json` (`ollama`, `gemini` or `cloud`). When your main AI runs out of free usage, is overloaded or unreachable, villagers switch to the backup automatically. The main AI rests for a minute after a failure so messages are not delayed. Off by default.
-```
-
-## Version 1.0.4 (update)
-
-File: `build/libs/villaging-1.0.4.jar`. Same loader, game version and Fabric API dependency.
-
-```markdown
-Building from blueprints, and teams.
-- Tell a helper to build: "build a stone cottage by the river". It designs the plan (or uses a ready-made cottage, tower, wall, bridge or castle), counts the materials against what it carries and a chest, asks you, and builds it block by block from the bottom up.
-- If it runs out of a material it stops, says exactly what it needs ("I need 12 more stone"), and carries on when you say start again.
-- Nothing is forced: occupied or protected spots are kept and reported. Big builds ask you first. Builds survive a restart.
-- Teams: group helpers under one leader ("make a team called builders with Bob as leader, add Alice and Rex"), or use `/villaging team list|create|add|remove|disband` (king only, no AI needed). Tell the leader a job and it hands out the work: `assign` for one member, `assign_build` to split a planned build so the members build side by side, `team_status` to see what each is doing.
-- Builds beyond the "builds at once" limit wait and start by themselves when one finishes. If the leader dies the team ends; if a member dies the leader says so.
+Building, teams and a backup AI.
+- Build for you: "build a stone cottage by the river". The helper designs the plan (or uses a ready-made cottage, tower, wall, bridge or castle), counts the materials against what it carries and a chest, asks you, and builds it block by block from the bottom up. If it runs out of a material it stops, says exactly what it needs ("I need 12 more stone"), and carries on when you say start again. Occupied or protected spots are kept and reported, big builds ask you first, and builds survive a restart.
+- Teams: group helpers under one leader ("make a team called builders with Bob as leader, add Alice and Rex"), or use `/villaging team list|create|add|remove|disband` (king only, no AI needed). Tell the leader a job and it hands out the work: `assign` for one member, `assign_build` to split a planned build so the members build side by side, `team_status` to see what each is doing. Builds beyond the "builds at once" limit wait and start by themselves. If the leader dies the team ends; if a member dies the leader says so.
+- Backup AI: new optional `fallbackProvider` in `config/villaging.json` (`ollama`, `gemini` or `cloud`). When your main AI runs out of free usage, is overloaded or unreachable, villagers switch to the backup automatically. Off by default. Ollama also keeps your local model loaded for 30 minutes, so only the first answer is slow.
 - New tools: use_template, design_blueprint, list_blueprints, show_blueprint, plan_build, start_build, stop_build, cancel_build, build_status, create_team, add_to_team, remove_from_team, disband_team, list_teams, assign, assign_build, team_status.
 - Helpers now sneak while placing blocks, so a block placed next to a door or chest is built against it and does not open it.
 - New settings in config/villaging.json: "build" (speed, ask limit, builds at once, limits) and "teams" (maxSize, default 5).
