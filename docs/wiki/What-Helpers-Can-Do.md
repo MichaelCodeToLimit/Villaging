@@ -8,11 +8,13 @@ Just say it normally. Examples:
 - "Farm the wheat", "fish for a while", "breed the cows"
 - "Guard me", "follow me", "go to the house", "sleep"
 - "Recruit two more villagers", "your name is Garrick", "call me Boss"
+- "Build a stone cottage by the river": a helper designs it and builds it block by block
+- "Make a team called builders with Bob as leader, add Alice and Rex", then tell Bob "build the castle" and the team builds it together
 - Long jobs run as a step-by-step plan; say "stop" to end it.
 
 Safety: lava, fire, TNT and wrecking big areas always ask you first in a pop-up. Helpers never hurt players or pets.
 
-Not yet: enchanting and anvils, building from blueprints, ranks.
+Not yet: enchanting and anvils, saving your own builds as blueprints.
 
 ## Commands
 
@@ -28,3 +30,4 @@ Say "build a stone cottage here" (or a tower, wall, bridge or castle) and a help
 - Occupied or protected spots are kept and reported; nothing is broken to make room. Big builds ask you first.
 - Ready-made designs come in five styles (stone, wood, brick, sandstone, dark). The AI can also draw its own plan from simple shapes.
 - You can say stop to pause it and "start building again" to carry on.
+- `/villaging team list`, `create <name> <leader>, <member>, ...`, `add <team> <helper>`, `remove <team> <helper>`, `disband <team>`: manage teams. King only, no AI needed. The team size limit is `teams.maxSize` in `config/villaging.json` (default 5).

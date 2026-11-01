@@ -25,6 +25,8 @@ import com.villaging.net.CloseChatPayload;
 import com.villaging.net.OpenChatPayload;
 import com.villaging.villager.ChatTranscript;
 import com.villaging.villager.TalkHold;
+import com.villaging.villager.TeamBuilds;
+import com.villaging.villager.TeamHandlers;
 import com.villaging.ai.tools.AbilityTools;
 import com.villaging.ai.PendingQuestions;
 import com.villaging.villager.ActionManager;
@@ -36,6 +38,7 @@ import com.villaging.villager.VillagerInventories;
 import com.villaging.villager.ToolHandlers;
 import com.villaging.villager.VillagerSpeech;
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
@@ -83,6 +86,7 @@ public class Villaging implements ModInitializer {
 		VillagerBrains.init();
 		VillagerInventories.init();
 		BuildJobs.init();
+		com.villaging.team.Teams.init();
 		ToolHandlers.registerBase();
 		ToolHandlers.registerAbilities();
 		AbilityTools.registerAll();
@@ -146,12 +150,14 @@ public class Villaging implements ModInitializer {
 			TalkHold.clear();
 			HelperCommands.clear();
 			BuildRegistry.clear();
+			TeamBuilds.clear();
 		});
 		ServerTickEvents.END_LEVEL_TICK.register(ActionManager.INSTANCE::tick);
 		ServerTickEvents.END_SERVER_TICK.register(server -> {
 			VillagerSpeech.tick();
 			TalkHold.tick(server);
 			HelperCommands.tick(server);
+			TeamBuilds.tick(server);
 			PendingQuestions.INSTANCE.expire(System.nanoTime());
 		});
 
@@ -213,6 +219,12 @@ public class Villaging implements ModInitializer {
 				ScriptManager.INSTANCE.cancel(villager);
 				TalkHold.release(villager);
 				BuildRegistry.finish(villager.getUUID());
+			}
+		});
+
+		ServerLivingEntityEvents.AFTER_DEATH.register((entity, source) -> {
+			if (entity instanceof PathfinderMob mob && Kinds.canBeSmart(entity) && mob.level() instanceof net.minecraft.server.level.ServerLevel level) {
+				TeamHandlers.helperDied(level, mob);
 			}
 		});
 

@@ -15,6 +15,25 @@ public final class VillagerState {
 	private VillagerState() {
 	}
 
+	/** What the helper should know about its team: empty when it has none. */
+	private static String teamLine(PathfinderMob villager) {
+		java.util.Optional<com.villaging.team.Team> team = com.villaging.team.Teams.teamOf(villager);
+		if (team.isEmpty() || !(villager.level() instanceof net.minecraft.server.level.ServerLevel level)) {
+			return "";
+		}
+		java.util.List<PathfinderMob> members = com.villaging.team.Teams.loadedMembers(level, team.get());
+		if (team.get().leader().equals(villager.getUUID())) {
+			java.util.List<String> names = members.stream().filter(m -> m != villager).map(m -> VillagerBrains.get(m).name()).toList();
+			return "\nYou lead team " + team.get().name() + ", with members: " + (names.isEmpty() ? "none nearby" : String.join(", ", names))
+					+ ". Give the team its jobs with assign (one member, any job) and assign_build (a planned build for everyone), "
+					+ "check them with team_status, and tell the king one short summary when they are done.";
+		}
+		String leader = members.stream().filter(m -> m.getUUID().equals(team.get().leader())).findFirst()
+				.map(m -> VillagerBrains.get(m).name()).orElse("your leader");
+		return "\nYou are in team " + team.get().name() + ", led by " + leader
+				+ ". Do the jobs your leader or the king gives you, and say so when you are done.";
+	}
+
 	public static String describe(PathfinderMob villager) {
 		StringBuilder sb = new StringBuilder();
 		sb.append(String.format(Locale.ROOT, "You are at (%.1f, %.1f, %.1f). Health %.0f/%.0f.\n", villager.getX(),
@@ -38,6 +57,7 @@ public final class VillagerState {
 			}
 		}
 		sb.append("Nearby (within 8 blocks): ").append(nearby.isEmpty() ? "nothing" : nearby.toString()).append('.');
+		sb.append(teamLine(villager));
 		return sb.toString();
 	}
 }

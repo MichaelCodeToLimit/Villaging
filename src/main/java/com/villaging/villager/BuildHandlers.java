@@ -56,7 +56,7 @@ final class BuildHandlers {
 		return CompletableFuture.completedFuture("failed: " + text);
 	}
 
-	private static Path dir(ToolContext ctx) {
+	static Path dir(ToolContext ctx) {
 		return BlueprintFiles.dir(ctx.server());
 	}
 
@@ -141,11 +141,11 @@ final class BuildHandlers {
 		return done(String.join("; ", lines));
 	}
 
-	private static Optional<Blueprint> load(ToolContext ctx, String name) {
+	static Optional<Blueprint> load(ToolContext ctx, String name) {
 		return BlueprintStore.load(dir(ctx), name, ctx.config().build().maxBlueprintBlocks());
 	}
 
-	private static CompletableFuture<String> noSuch(ToolContext ctx, String name) {
+	static CompletableFuture<String> noSuch(ToolContext ctx, String name) {
 		List<String> names = BlueprintStore.names(dir(ctx));
 		return failed("there is no blueprint called " + name + (names.isEmpty() ? "; make one with use_template or design_blueprint"
 				: "; the saved ones are " + String.join(", ", names)));
@@ -286,7 +286,7 @@ final class BuildHandlers {
 		return CompletableFuture.completedFuture(result);
 	}
 
-	private static String begin(ToolContext ctx, PathfinderMob helper, BuildJob job, Blueprint turned) {
+	static String begin(ToolContext ctx, PathfinderMob helper, BuildJob job, Blueprint turned) {
 		int max = ctx.config().build().maxActiveBuilds();
 		if (!BuildRegistry.tryStart(helper.getUUID(), max)) {
 			return "failed: " + BuildRegistry.count() + " builds are already running in this world (the most is " + max + "); try again when one finishes";

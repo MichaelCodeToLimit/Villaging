@@ -36,6 +36,17 @@ class BuildRegistryTest {
 	}
 
 	@Test
+	void finishingABuildMarksASlotFreedExactlyOnce() {
+		assertFalse(BuildRegistry.consumeSlotFreed());
+		BuildRegistry.tryStart(a, 2);
+		BuildRegistry.finish(b);
+		assertFalse(BuildRegistry.consumeSlotFreed(), "finishing a build that was not running frees nothing");
+		BuildRegistry.finish(a);
+		assertTrue(BuildRegistry.consumeSlotFreed());
+		assertFalse(BuildRegistry.consumeSlotFreed());
+	}
+
+	@Test
 	void finishingABuildForgetsItsLastShortage() {
 		assertTrue(BuildRegistry.shouldWake(a, "I need 5 more cobblestone"));
 		BuildRegistry.forgetWake(a);

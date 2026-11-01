@@ -2,15 +2,20 @@ package com.villaging.command;
 
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
+import com.mojang.brigadier.context.CommandContext;
+import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.villaging.Villaging;
 import com.villaging.command.CommandService.CommandResult;
 import com.villaging.command.HelperRoster.Ambiguous;
 import com.villaging.command.HelperRoster.Found;
 import com.villaging.command.HelperRoster.Helper;
+import com.villaging.config.VillagingConfig;
 import com.villaging.king.Kings;
+import com.villaging.team.TeamCommands;
 import com.villaging.villager.ActionManager;
 import com.villaging.villager.Kinds;
 import com.villaging.villager.ScriptManager;
+import com.villaging.villager.TeamHandlers;
 import com.villaging.villager.VillagerBrains;
 import com.villaging.villager.VillagerSpeech;
 import java.util.ArrayList;
@@ -45,6 +50,7 @@ public final class HelperCommands {
 	}
 
 	public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
+		registerTeamCommands(dispatcher);
 		dispatcher.register(Commands.literal("announcements")
 				.then(Commands.argument("message", StringArgumentType.greedyString()).executes(context -> announce(
 						context.getSource().getPlayerOrException(), StringArgumentType.getString(context, "message")))));
@@ -57,6 +63,42 @@ public final class HelperCommands {
 						})
 						.executes(context -> summon(context.getSource().getPlayerOrException(),
 								StringArgumentType.getString(context, "name"))))));
+	}
+
+	private interface TeamAction {
+		String run(ServerPlayer king, VillagingConfig config);
+	}
+
+	private static int team(CommandContext<CommandSourceStack> context, TeamAction action) throws CommandSyntaxException {
+		ServerPlayer king = context.getSource().getPlayerOrException();
+		VillagingRuntime runtime = Villaging.runtime();
+		if (!onlyKing(king) || runtime == null) {
+			return 0;
+		}
+		String result = action.run(king, runtime.config());
+		boolean ok = result.startsWith("ok: ");
+		king.sendSystemMessage(Component.literal(result.replaceFirst("^(ok|failed): ", "")));
+		return ok ? 1 : 0;
+	}
+
+	private static void registerTeamCommands(CommandDispatcher<CommandSourceStack> dispatcher) {
+		dispatcher.register(Commands.literal("villaging").then(Commands.literal("team")
+				.then(Commands.literal("list").executes(c -> team(c, (king, config) -> TeamHandlers.list(king))))
+				.then(Commands.literal("create").then(Commands.argument("name", StringArgumentType.word())
+						.then(Commands.argument("people", StringArgumentType.greedyString()).executes(c -> team(c, (king, config) -> {
+							String people = StringArgumentType.getString(c, "people");
+							return TeamCommands.parse(people)
+									.map(p -> TeamHandlers.create(king, config, StringArgumentType.getString(c, "name"), p.leader(), p.members()))
+									.orElse("failed: name the leader first, then the other helpers, like: Bob, Alice, Rex");
+						})))))
+				.then(Commands.literal("add").then(Commands.argument("team", StringArgumentType.word())
+						.then(Commands.argument("helper", StringArgumentType.greedyString()).executes(c -> team(c, (king, config) ->
+								TeamHandlers.add(king, config, StringArgumentType.getString(c, "team"), StringArgumentType.getString(c, "helper")))))))
+				.then(Commands.literal("remove").then(Commands.argument("team", StringArgumentType.word())
+						.then(Commands.argument("helper", StringArgumentType.greedyString()).executes(c -> team(c, (king, config) ->
+								TeamHandlers.remove(king, StringArgumentType.getString(c, "team"), StringArgumentType.getString(c, "helper")))))))
+				.then(Commands.literal("disband").then(Commands.argument("team", StringArgumentType.word())
+						.executes(c -> team(c, (king, config) -> TeamHandlers.disband(king, StringArgumentType.getString(c, "team"))))))));
 	}
 
 	private static List<PathfinderMob> smartHelpers(ServerLevel level, ServerPlayer king, double range) {

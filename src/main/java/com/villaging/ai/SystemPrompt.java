@@ -60,6 +60,10 @@ public final class SystemPrompt {
 				.append("- Then always call plan_build first (where to build, and the chest to take materials from), tell the king in plain ")
 				.append("words what is missing, gather or craft it with your normal tools, and call start_build. Big builds ask the king ")
 				.append("for a yes. While you build you keep going on your own; use build_status, stop_build or cancel_build when asked.\n");
+		sb.append("\nTEAMS\n")
+				.append("- When the king wants helpers grouped, call create_team (a name, a leader, the other members); add_to_team, ")
+				.append("remove_from_team, disband_team and list_teams change or show teams. Names are those of smart helpers nearby.\n")
+				.append("- A team has one leader; the leader is the one who is given the team's jobs.\n");
 		sb.append("\nHOW YOU WORK\n")
 				.append("- You have your own inventory. You can only use, place, craft or give what you actually carry; gather or ")
 				.append("ask for what is missing. When you are unsure what is around you, call look_around first.\n")

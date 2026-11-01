@@ -16,6 +16,14 @@ class SystemPromptTest {
 	}
 
 	@Test
+	void teamsSectionMentionsLeaderAndTheTeamTools() {
+		String p = prompt();
+		assertTrue(p.contains("TEAMS"));
+		assertTrue(p.contains("create_team"));
+		assertTrue(p.contains("leader"));
+	}
+
+	@Test
 	void includesNameAndState() {
 		String p = prompt();
 		assertTrue(p.contains("Alma"));
