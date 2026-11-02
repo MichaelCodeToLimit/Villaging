@@ -69,6 +69,11 @@ final class CombatActions {
 		return null;
 	}
 
+	private static int arrowsNear(ServerLevel level, PathfinderMob villager) {
+		return level.getEntitiesOfClass(net.minecraft.world.entity.projectile.arrow.AbstractArrow.class,
+				villager.getBoundingBox().inflate(4.0)).size();
+	}
+
 	private static String name(Entity e) {
 		return e.getType().getDescription().getString();
 	}
@@ -187,11 +192,13 @@ final class CombatActions {
 			villager.getLookControl().setLookAt(target);
 			ItemStack bow = player.getItemInHand(InteractionHand.MAIN_HAND);
 			int arrowsBefore = inventory.count(Items.ARROW);
+			int flyingBefore = arrowsNear(level, villager);
 			bow.releaseUsing(level, player, bow.getUseDuration(player) - FULL_DRAW_TICKS);
 			hands.syncTo();
 			villager.swing(InteractionHand.MAIN_HAND);
-			return inventory.count(Items.ARROW) < arrowsBefore ? Status.done("shot an arrow at the " + name(target))
-					: Status.failed("the shot did not go off");
+			// An Infinity bow keeps its arrow, so a new arrow in the air counts as a shot too.
+			return inventory.count(Items.ARROW) < arrowsBefore || arrowsNear(level, villager) > flyingBefore
+					? Status.done("shot an arrow at the " + name(target)) : Status.failed("the shot did not go off");
 		}
 	}
 

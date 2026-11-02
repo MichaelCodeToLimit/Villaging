@@ -158,6 +158,7 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 			attempt("fighting: a weapon that breaks is reported and leaves the inventory", () -> combatBrokenWeaponIsSaid(server));
 			attempt("players and pets are never attacked or shot", () -> combatNeverHurtsPlayersOrPets(server));
 			attempt("shoot hits a target with a bow", () -> combatShoot(server));
+			attempt("fighting: an Infinity bow shoots without a false failure", () -> combatInfinityBow(server));
 			attempt("guard protects the king and spares pets, flee runs away", () -> combatGuardAndFlee(server));
 			attempt("sit stays put and sleep lies down at night and wakes at dawn", () -> sitAndSleep(server));
 			attempt("task scripts run, fail cleanly, obey limits and stop", () -> scripts(context, server));
@@ -980,6 +981,23 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 		require(villagerCount(server, v, Items.ARROW) == 3, "the arrow was not used up");
 		server.waitFor(srv -> healthOf(server, husk) < before, 200);
 		require(healthOf(server, husk) < before, "the arrow never hit the husk");
+	}
+
+	private void combatInfinityBow(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager v = spawnVillager(server, 0, 100, 0);
+		int husk = mobId(server, "minecraft:husk", 8, 100, 0);
+		server.runOnServer(srv -> {
+			ItemStack bow = new ItemStack(Items.BOW);
+			bow.enchant(srv.registryAccess().lookupOrThrow(net.minecraft.core.registries.Registries.ENCHANTMENT)
+					.getOrThrow(net.minecraft.world.item.enchantment.Enchantments.INFINITY), 1);
+			VillagerInventories.get(v).addItem(bow);
+			VillagerInventories.get(v).addItem(new ItemStack(Items.ARROW, 1));
+		});
+		String shot = tool(server, v, "shoot", "{\"entity_id\":" + husk + "}", 200);
+		require(shot.startsWith("ok: shot"), "an Infinity bow shot said " + shot);
+		require(villagerCount(server, v, Items.ARROW) == 1, "Infinity should keep the arrow, found " + villagerCount(server, v, Items.ARROW));
 	}
 
 	private void combatGuardAndFlee(TestServerContext server) throws Exception {
