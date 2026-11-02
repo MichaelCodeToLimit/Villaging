@@ -15,3 +15,7 @@ That is about 28% less text. The instructions no longer repeat every tool, and t
 The original 18,700 target is not reachable without removing tool schemas: the schema structure alone is about 12,000 characters. If the measured warm first reply on `llama3.1:8b` is still above 5 seconds, the next step is approach 2 from the spec (send only the tool groups a request is likely to need, falling back to all tools when the model asks for an unknown one).
 
 Side effect worth knowing: Ollama's own default context is far smaller than the old 8,500-token request, so it may have been cutting the start of the instructions. 1.0.4 asks for a 12,288-token context.
+
+## Task idle waits
+
+Nothing to trim. The slowest in-game checks from a full run were mechanics-bound: smelting, fishing and brewing take real game time, and `break_area`, `guard`, `attack` and `chop_tree` take 13 to 22 seconds because of mining speed and walking. No fixed idle wait (a pause that keeps going after the target is reached) was found, so no action timing was changed. The visible gain for tasks is the default build speed (6 to 3 ticks per block).
