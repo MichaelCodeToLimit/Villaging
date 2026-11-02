@@ -1,18 +1,21 @@
 # Villaging
 
-Turn villagers and iron and copper golems into **smart AI helpers** that you command in plain words. You are the king.
+Villagers and golems become **smart AI helpers** that you command in plain words. Say what you want and they get it done. You are the king.
 
-## What you can do
+## What it feels like
 
-- **Talk normally.** Right-click a smart villager to open a full chat that stays open. Slang, typos and other languages work, and the villager stands still while you talk.
-- **Make any villager smart.** Sneak + right-click an ordinary villager and say anything. It becomes smart and gets a name. The first person to do this in a new world becomes the king. You can also use the **Crown**, found in the creative inventory or crafted.
-- **They do real work.** Mine, place and break blocks, chop trees, farm, fish, craft, smelt, brew, fight, guard, carry items, work with chests, and run long jobs as step-by-step plans.
-- **Build for you.** "Build a stone cottage by the river": a helper designs it (or uses a ready-made cottage, tower, wall, bridge or castle), counts the materials against what it carries and a chest, asks you, and builds it block by block. If it runs short it tells you exactly what it needs.
-- **Recruit more helpers.** Say "recruit the iron golem". You approve, then up to 5 villagers or golems become smart.
-- **Work in teams.** Make a team with a leader ("team builders: Bob leads, add Alice and Rex"). Tell the leader a job and the team does it together, including building one structure side by side.
-- **Rename them** and choose what they call you ("call me Boss").
-- **Safe by design.** Risky acts (lava, fire, TNT, wrecking big areas) always ask you first in a pop-up. They never hurt players or pets, and they respect spawn protection.
-- **A built-in guide** opens the first time you play. Open it again with `/villaging guide`.
+- **Just talk.** Right-click a smart villager to open a chat. Slang, typos and other languages all work.
+- **Make anyone smart.** Sneak and right-click a villager and say anything. It wakes up with a name. The first player to do this in a new world becomes the king. You can also use the **Crown**.
+- **Real work, not tricks.** Helpers mine, chop, farm, fish, craft, smelt, brew, fight, guard, carry items and use chests. Long jobs run as step-by-step plans.
+- **Builders.** Say "build a stone cottage by the river". A helper designs it (or uses a ready-made cottage, tower, wall, bridge or castle), counts the materials, asks you, and builds it block by block. If it runs short, it tells you exactly what it needs.
+- **Teams.** Say "make a team called builders with Bob as leader, add Alice and Rex". The leader hands out the work, and the team can build one structure side by side.
+- **Recruit.** "Recruit the iron golem": you approve, and up to 5 villagers or golems become smart.
+- **Your names.** Rename helpers and choose what they call you ("call me Boss").
+- **Safe.** Risky acts (lava, fire, TNT, wrecking big areas) always ask you first. They never hurt players or pets, and they respect spawn protection.
+- **Never stuck.** Set a backup AI and helpers switch to it when your main one runs out or goes down.
+- **Quick.** Small requests, faster builds, and helpers that keep up. Weapons wear out, Infinity bows and beds work like you expect.
+
+A built-in guide opens the first time you play. Open it again with `/villaging guide`.
 
 ## Setup
 
@@ -28,4 +31,6 @@ Villagers think using an AI service that you choose. Your messages, and what a v
 
 ## Coming later
 
-Saving your own builds as blueprints, importing structure files, and a server plugin.
+Saving and sharing your own builds, previews and nicer designs, and a server plugin.
+
+Questions or ideas? Join the Discord: https://discord.gg/V8zF3tuWW
