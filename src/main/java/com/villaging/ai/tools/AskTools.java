@@ -29,8 +29,7 @@ public final class AskTools {
 
 	public static void register() {
 		Tools.register(new ToolDef("ask",
-				"Ask the king a question in a pop-up dialog with a few options (and a box for their own answer). Use it "
-						+ "when you truly need a decision, such as which of two things to do. The answer comes back as the result.",
+				"Ask the king a question in a pop-up with a few options. Use it when you truly need a decision. The answer is the result.",
 				object(prop("question", "string", "The question, short and clear."),
 						ToolSchema.arrayOfStrings("options", "Up to 4 short choices; may be empty.")).required("question").build()),
 				(args, range, ox, oy, oz) -> {
@@ -54,8 +53,7 @@ public final class AskTools {
 					return Optional.empty();
 				});
 		Tools.register(new ToolDef("set_ask_preference",
-				"Change whether you ask the king before a risky act. Use it only when the king tells you to stop asking "
-						+ "(ask=false) or to ask again (ask=true) about a category. Turning asking off needs the king's yes.",
+				"Only when the king says to stop asking (ask=false) or to ask again (ask=true) before a risky act. Turning asking off needs the king's yes.",
 				object(enumProp("category", "The kind of risky act.", CATEGORIES.stream().sorted().toArray(String[]::new)),
 						prop("ask", "boolean", "true to ask the king first, false to stop asking.")).required("category", "ask").build()),
 				(args, range, ox, oy, oz) -> {

@@ -17,8 +17,7 @@ public final class LookTools {
 
 	public static void register() {
 		Tools.register(new ToolDef("look_around",
-				"Look at your surroundings: notable blocks (ores, wood, containers, stations, crops, water, lava) with "
-						+ "coordinates, nearby creatures, dropped items. Do this first when you are unsure what is where.",
+				"Look at your surroundings: notable blocks with coordinates, creatures, dropped items. Do this first when unsure.",
 				object(prop("radius", "integer", "How far to look, 1 to " + MAX_RADIUS + " blocks (default 8).")).build()),
 				(args, range, ox, oy, oz) -> args.has("radius") ? ToolSchema.intIn(args, "radius", 1, MAX_RADIUS)
 						: Optional.empty());

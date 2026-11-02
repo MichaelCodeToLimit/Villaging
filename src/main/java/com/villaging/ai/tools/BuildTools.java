@@ -123,14 +123,13 @@ public final class BuildTools {
 		Tools.register(new ToolDef("design_blueprint",
 				"Save a new blueprint from a shape plan you write. \"plan\" is JSON text: {\"size\":[w,h,d],\"palette\":{\"S\":\"minecraft:stone_bricks\"},"
 						+ "\"shapes\":[{\"type\":\"box\",\"x\":0,\"y\":0,\"z\":0,\"w\":5,\"h\":3,\"d\":5,\"block\":\"S\"}]}. Shape types: box, hollow_box, "
-						+ "floor, walls, roof_gable, roof_flat, roof_pyramid, cylinder, line, door, window. At most 48 wide or deep, 64 high, 60 shapes. "
-						+ "Returns the size, block count and the materials it needs.",
+						+ "floor, walls, roof_gable, roof_flat, roof_pyramid, cylinder, line, door, window. At most 48 wide or deep, 64 high, 60 shapes.",
 				object(prop("name", "string", "A new blueprint name: lowercase letters, digits, underscores."),
 						prop("plan", "string", "The shape plan as JSON text.")).required("name", "plan").build()),
 				BuildTools::design);
 		Tools.register(new ToolDef("use_template",
 				"Save a blueprint from a ready-made design: " + String.join(", ", Templates.ids())
-						+ ". Width, depth and height are optional (they are kept inside each design's limits); style is "
+						+ ". Width, depth, height optional; style is "
 						+ String.join(", ", Templates.styles()) + "; roof (cottage only) is " + String.join(", ", Templates.roofs()) + ".",
 				object(prop("name", "string", "A new blueprint name: lowercase letters, digits, underscores."),
 						enumProp("template", "Which design.", Templates.ids().toArray(new String[0])),
@@ -147,17 +146,15 @@ public final class BuildTools {
 				object(prop("name", "string", "Blueprint name."), prop("layer", "integer", "Layer number from 0 (bottom).")).required("name", "layer").build()),
 				BuildTools::show);
 		Tools.register(new ToolDef("plan_build",
-				"Get ready to build a blueprint at a spot: checks the site and counts the materials against what you carry and a chest "
-						+ "(name the chest with stockpile_x/y/z, or the nearest chest within 8 blocks is used). Starts nothing; it tells you what is missing. "
-						+ "x, y, z is the lowest corner of the build (where the blueprint's corner goes).",
+				"Check a build site and count materials against what you carry and a chest (stockpile_x/y/z, else the nearest chest "
+						+ "within 8 blocks). Starts nothing; says what is missing. x, y, z is the build's lowest corner.",
 				object(prop("name", "string", "Blueprint name."), prop("x", "integer", "Corner X."), prop("y", "integer", "Corner Y (the floor level)."),
 						prop("z", "integer", "Corner Z."), enumProp("rotation", "Turn the build clockwise, in degrees.", "0", "90", "180", "270"),
 						prop("stockpile_x", "integer", "Chest X (optional)."), prop("stockpile_y", "integer", "Chest Y (optional)."),
 						prop("stockpile_z", "integer", "Chest Z (optional).")).required("name", "x", "y", "z").build()),
 				BuildTools::planBuild);
 		Tools.register(new ToolDef("start_build",
-				"Start (or carry on with) the build you planned with plan_build. The king is asked first for big builds. You keep building by yourself "
-						+ "and will say when you are done, or what you need if materials run out.",
+				"Start (or carry on with) the build planned with plan_build. Big builds ask the king first. You keep building by yourself.",
 				object().build()), (args, range, ox, oy, oz) -> Optional.empty());
 		Tools.register(new ToolDef("build_status", "Say how far the current build is and what is missing.", object().build()),
 				(args, range, ox, oy, oz) -> Optional.empty());

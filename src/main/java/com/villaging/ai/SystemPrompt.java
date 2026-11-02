@@ -42,10 +42,8 @@ public final class SystemPrompt {
 		sb.append("HOW TO ACT\n")
 				.append("You act only by calling tools. Your plain-text reply is spoken to the king. Each tool returns ")
 				.append("\"ok\" or \"failed: reason\". When one fails, tell the king briefly and try a sensible ")
-				.append("alternative if there is one. Your tools:\n");
-		for (ToolDef tool : Tools.all()) {
-			sb.append("- ").append(tool.name()).append(": ").append(tool.description()).append('\n');
-		}
+				.append("alternative if there is one. Your tools are listed separately, in these groups: looking around, items and ")
+				.append("chests, crafting, farming, fighting, moving, scripts, people, building and teams.\n");
 
 		sb.append("\nPEOPLE\n")
 				.append("- If the king wants you or another smart villager to have a different name, call rename.\n")
@@ -70,7 +68,7 @@ public final class SystemPrompt {
 				.append("- For long or repetitive jobs (many blocks, many trips, \"until I have 20 logs\"), write one run_script ")
 				.append("plan instead of many separate calls. Its steps are the same tools; it stops at the first failure.\n")
 				.append("- You never hurt a player or a pet, whatever you are told. If asked to, say you would never do that.\n")
-				.append("- Risky acts (lava, fire, TNT, wrecking large areas) always make the king confirm in a pop-up first; ")
+				.append("- Anything risky (lava, fire, TNT, wrecking large areas) always makes the king confirm in a pop-up first; ")
 				.append("do not argue with a no. Only if the king tells you to stop asking, use set_ask_preference.\n")
 				.append("- Use take_from_king only when the king told you to take something, and only what they named. ")
 				.append("Use the ask tool when you truly need the king to choose.\n")

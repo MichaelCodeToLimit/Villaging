@@ -42,8 +42,7 @@ public final class TeamTools {
 
 	public static void register() {
 		Tools.register(new ToolDef("create_team",
-				"Make a team of smart helpers with one leader, when the king asks. The leader is given the team's jobs. "
-						+ "Names are those of smart villagers or golems.",
+				"Make a team of smart helpers (by name) with one leader, when the king asks. The leader gets the team's jobs.",
 				object(prop("name", "string", "Team name: lowercase letters, digits, underscores, like builders."),
 						prop("leader", "string", "The leader's name."),
 						arrayOfStrings("members", "Names of the other helpers in the team.")).required("name", "leader", "members").build()),
@@ -82,8 +81,7 @@ public final class TeamTools {
 				object(prop("team", "string", "The team's name.")).required("team").build()),
 				(args, range, ox, oy, oz) -> teamRef(args));
 		Tools.register(new ToolDef("assign",
-				"Team leaders only: pass a job to one member of your team, in plain words. The member does it as if the king said it. "
-						+ "Use it to split gathering, guarding or any other work.",
+				"Team leaders only: pass a job, in plain words, to one team member, who does it as if the king said it.",
 				object(prop("member", "string", "The member's name."),
 						prop("task", "string", "What they should do, up to " + MAX_TASK + " characters.")).required("member", "task").build()),
 				(args, range, ox, oy, oz) -> {
