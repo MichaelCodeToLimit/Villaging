@@ -170,7 +170,7 @@ class VillagingConfigTest {
 
 	@Test
 	void buildSettingsDefaultToTheSpecValues() {
-		assertEquals(new BuildSettings(20000, 50, 6, 64, 3), VillagingConfig.defaults().build());
+		assertEquals(new BuildSettings(20000, 50, 3, 64, 3), VillagingConfig.defaults().build());
 	}
 
 	@Test

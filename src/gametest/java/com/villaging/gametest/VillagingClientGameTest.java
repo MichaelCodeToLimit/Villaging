@@ -175,6 +175,7 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 			attempt("blueprint planning: template, plan_build report and the ASCII view", () -> blueprintPlanning(server));
 			attempt("blueprint build: a cottage appears block by block and the materials are used up exactly", () -> blueprintBuild(context, server, 0));
 			attempt("blueprint build: a rotated build puts the door where the plan says", () -> blueprintBuild(context, server, 1));
+			attempt("blueprint build: the default speed still builds every block", () -> blueprintDefaultSpeed(server));
 			attempt("blueprint build: missing stone pauses with a message and resumes after a top-up", () -> blueprintPausesAndResumes(context, server));
 			attempt("blueprint build: occupied and protected cells are kept and reported", () -> blueprintBlockedCells(context, server));
 			attempt("blueprint build: stop pauses and a fresh start resumes without redoing blocks", () -> blueprintStopAndResume(context, server));
@@ -1599,6 +1600,29 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 			context.runOnClient(mc -> mc.gui.setScreen(null));
 		} finally {
 			deleteBlueprints(server, name);
+		}
+	}
+
+	/** The same cottage as the other build checks, but at the speed a player gets without changing any setting. */
+	private void blueprintDefaultSpeed(TestServerContext server) throws Exception {
+		Site s = blueprintSite(server, "hut9");
+		try {
+			Blueprint bp = savedBlueprint(server, "hut9");
+			stock(server, s.helper(), bp, 0);
+			VillagingConfig d = VillagingConfig.defaults();
+			VillagingConfig config = new VillagingConfig(d.provider(), d.apiKey(), d.model(), d.cloudUrl(), d.ollamaUrl(), d.ollamaModel(),
+					d.geminiModel(), d.geminiUrl(), d.maxSteps(), d.callsPerMinute(), d.actionRange(), d.respectProtection(),
+					d.allowBreakBedrock(), d.maxScriptSteps(), d.maxScriptSeconds(), d.maxScriptDepth(), "",
+					new BuildSettings(20_000, 50, d.build().buildTicksPerBlock(), 1000, 3));
+			require(planAt(server, s.helper(), "hut9", 0).contains("I have all the materials"), "plan_build did not find the materials");
+			String started = tool(server, s.helper(), config, "start_build", "{}", 100);
+			require(started.startsWith("ok: building"), "start_build said: " + started);
+			awaitBuildDone(server, s.helper(), 8000);
+			int total = BuildOrder.order(bp).size();
+			require(built(server, bp, 0) == total, "only " + built(server, bp, 0) + " of " + total + " blocks were built at the default speed");
+			require(carriedOf(server, s.helper(), bp) == 0, "the materials were not used up exactly");
+		} finally {
+			deleteBlueprints(server, "hut9");
 		}
 	}
 

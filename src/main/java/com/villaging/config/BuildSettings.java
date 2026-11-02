@@ -4,7 +4,7 @@ package com.villaging.config;
 public record BuildSettings(int maxBlueprintBlocks, int maxSavedBlueprints, int buildTicksPerBlock, int buildAskThreshold,
 		int maxActiveBuilds) {
 	public static BuildSettings defaults() {
-		return new BuildSettings(20_000, 50, 6, 64, 3);
+		return new BuildSettings(20_000, 50, 3, 64, 3);
 	}
 
 	/** Non-positive or missing values fall back to the defaults. */

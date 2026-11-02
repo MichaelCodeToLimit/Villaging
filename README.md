@@ -119,7 +119,7 @@ the materials, asks you, then builds it block by block from the bottom up.
 - **Nothing is forced.** Occupied or protected spots are kept and reported; blocks are never broken to make room. Builds bigger than 64
   blocks, or on a site with occupied spots, ask you first. A build survives a restart (it waits for `start_build`).
 - Blueprints are saved in the world, in `<world>/villaging/blueprints/`. Saving your own builds and importing structure files comes next.
-- Settings (in `config/villaging.json`, under `"build"`): `buildTicksPerBlock` (6; higher is slower), `buildAskThreshold` (64),
+- Settings (in `config/villaging.json`, under `"build"`): `buildTicksPerBlock` (3; higher is slower), `buildAskThreshold` (64),
   `maxActiveBuilds` (3 at once in the world), `maxBlueprintBlocks` (20000), `maxSavedBlueprints` (50).
 
 ### Questions and risky acts
