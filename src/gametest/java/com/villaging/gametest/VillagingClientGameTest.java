@@ -161,6 +161,7 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 			attempt("fighting: an Infinity bow shoots without a false failure", () -> combatInfinityBow(server));
 			attempt("guard protects the king and spares pets, flee runs away", () -> combatGuardAndFlee(server));
 			attempt("sit stays put and sleep lies down at night and wakes at dawn", () -> sitAndSleep(server));
+			attempt("rest: using a bed at night puts the helper to sleep", () -> restUseBedAtNight(server));
 			attempt("task scripts run, fail cleanly, obey limits and stop", () -> scripts(context, server));
 			attempt("a risky step inside a script still asks the king", () -> scriptRiskyStepAsks(context, server));
 			attempt("a commander relays orders only with the king's approval", () -> commanderRelay(context, server));
@@ -1060,6 +1061,26 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 		server.waitFor(srv -> !v.isSleeping(), 200);
 		require(!server.computeOnServer(srv -> v.isSleeping()), "the villager did not wake at dawn");
 		require(tool(server, v, "sleep", "{\"x\":9,\"y\":100,\"z\":9}", 100).startsWith("failed"), "sleeping with no bed should fail");
+	}
+
+	private void restUseBedAtNight(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager v = spawnVillager(server, 0, 100, 0);
+		server.runCommand("setblock 3 100 0 minecraft:red_bed[facing=east,part=foot]");
+		server.runCommand("setblock 4 100 0 minecraft:red_bed[facing=east,part=head]");
+		server.runCommand("time set noon");
+		waitTicks(server, 5);
+		String day = tool(server, v, "use_block", "{\"x\":3,\"y\":100,\"z\":0}", 100);
+		require(day.startsWith("failed") && day.contains("night"), "using a bed by day should say it is not night yet: " + day);
+		require(!server.computeOnServer(srv -> v.isSleeping()), "the helper slept by day");
+		server.runCommand("time set midnight");
+		server.waitFor(srv -> srv.overworld().isDarkOutside(), 60);
+		String night = tool(server, v, "use_block", "{\"x\":3,\"y\":100,\"z\":0}", 800);
+		require(night.startsWith("ok"), "use_block on a bed said " + night);
+		require(server.computeOnServer(srv -> v.isSleeping()), "the helper is not really asleep");
+		server.runCommand("time set noon");
+		server.waitFor(srv -> !v.isSleeping(), 200);
 	}
 
 	private static String scriptArgs(String script) {
