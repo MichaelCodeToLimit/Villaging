@@ -154,6 +154,8 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 			attempt("shear, milk, breed and tame work on animals", () -> animals(server));
 			attempt("fish catches something near water", () -> fishing(server));
 			attempt("attack kills a hostile creature", () -> combatAttack(server));
+			attempt("fighting: a weapon loses durability when it hits", () -> combatWeaponWears(server));
+			attempt("fighting: a weapon that breaks is reported and leaves the inventory", () -> combatBrokenWeaponIsSaid(server));
 			attempt("players and pets are never attacked or shot", () -> combatNeverHurtsPlayersOrPets(server));
 			attempt("shoot hits a target with a bow", () -> combatShoot(server));
 			attempt("guard protects the king and spares pets, flee runs away", () -> combatGuardAndFlee(server));
@@ -903,6 +905,41 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 		require(healthOf(server, husk) <= 0f || server.computeOnServer(srv -> srv.overworld().getEntity(husk) == null
 				|| !srv.overworld().getEntity(husk).isAlive()), "the husk is still alive");
 		require(tool(server, v, "attack", "{\"entity_id\":99999}", 100).startsWith("failed"), "attacking a missing id should fail");
+	}
+
+	private void combatWeaponWears(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager v = spawnVillager(server, 0, 100, 0);
+		server.runOnServer(srv -> VillagerInventories.get(v).addItem(new ItemStack(Items.IRON_SWORD)));
+		int husk = mobId(server, "minecraft:husk", 3, 100, 0);
+		String result = tool(server, v, "attack", "{\"entity_id\":" + husk + "}", 1500);
+		require(result.startsWith("ok: killed"), "attack said " + result);
+		int worn = server.computeOnServer(srv -> {
+			VillagerInventory inventory = VillagerInventories.get(v);
+			for (int i = 0; i < inventory.getContainerSize(); i++) {
+				if (inventory.getItem(i).is(Items.IRON_SWORD)) {
+					return inventory.getItem(i).getDamageValue();
+				}
+			}
+			return -1;
+		});
+		require(worn > 0, "the sword in the helper's inventory is not worn (damage " + worn + ")");
+	}
+
+	private void combatBrokenWeaponIsSaid(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager v = spawnVillager(server, 0, 100, 0);
+		server.runOnServer(srv -> {
+			ItemStack nearlyBroken = new ItemStack(Items.WOODEN_SWORD);
+			nearlyBroken.setDamageValue(nearlyBroken.getMaxDamage() - 1);
+			VillagerInventories.get(v).addItem(nearlyBroken);
+		});
+		int husk = mobId(server, "minecraft:husk", 3, 100, 0);
+		String result = tool(server, v, "attack", "{\"entity_id\":" + husk + "}", 1500);
+		require(result.contains("broke"), "a broken weapon should be reported, attack said " + result);
+		require(villagerCount(server, v, Items.WOODEN_SWORD) == 0, "the broken sword is still in the inventory");
 	}
 
 	private void combatNeverHurtsPlayersOrPets(TestServerContext server) throws Exception {
