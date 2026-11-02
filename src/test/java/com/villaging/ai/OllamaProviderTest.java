@@ -127,6 +127,36 @@ class OllamaProviderTest {
 	}
 
 	@Test
+	void bodyKeepsExistingFields() {
+		JsonObject body = OllamaProvider.buildBody("llama3.1:8b", "sys", List.of(ChatMessage.user("yo")), Tools.all());
+		assertEquals("llama3.1:8b", body.get("model").getAsString());
+		assertTrue(!body.get("stream").getAsBoolean());
+		assertEquals("30m", body.get("keep_alive").getAsString());
+		assertTrue(body.has("messages"));
+		assertTrue(body.has("tools"));
+	}
+
+	@Test
+	void bodyHasContextAndPredictLimits() {
+		JsonObject options = OllamaProvider.buildBody("m", "s", List.of(ChatMessage.user("yo")), Tools.all())
+				.getAsJsonObject("options");
+		assertEquals(12288, options.get("num_ctx").getAsInt());
+		assertEquals(8192, options.get("num_predict").getAsInt());
+	}
+
+	@Test
+	void messagesAndToolsAreEncoded() {
+		ToolDef one = new ToolDef("ping", "Say ping.", ToolSchema.object().build());
+		JsonObject body = OllamaProvider.buildBody("m", "sys", List.of(ChatMessage.user("hello")), List.of(one));
+		JsonArray messages = body.getAsJsonArray("messages");
+		assertEquals(2, messages.size());
+		assertEquals("hello", messages.get(1).getAsJsonObject().get("content").getAsString());
+		JsonArray tools = body.getAsJsonArray("tools");
+		assertEquals(1, tools.size());
+		assertEquals("ping", tools.get(0).getAsJsonObject().getAsJsonObject("function").get("name").getAsString());
+	}
+
+	@Test
 	void connectionRefusedThrowsAiException() {
 		assertThrows(AiException.class,
 				() -> new OllamaProvider("http://127.0.0.1:1", "m").complete("s", List.of(ChatMessage.user("hi")), Tools.all()));
