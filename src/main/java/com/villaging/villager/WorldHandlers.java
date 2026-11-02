@@ -21,8 +21,14 @@ final class WorldHandlers {
 			return ActionManager.INSTANCE.run(ctx.villager(), new PlaceBlockAction(item, pos(args, "x", "y", "z"),
 					ctx.kingId(), ctx.config()));
 		});
-		ToolHandlers.register("use_block", (ctx, args) -> ActionManager.INSTANCE.run(ctx.villager(),
-				new UseBlockAction(pos(args, "x", "y", "z"), ctx.kingId(), ctx.config())));
+		ToolHandlers.register("use_block", (ctx, args) -> {
+			BlockPos target = pos(args, "x", "y", "z");
+			// A bed is slept in by the helper itself; the fake player lying down would not put the helper to sleep.
+			if (ctx.villager().level().getBlockState(target).getBlock() instanceof net.minecraft.world.level.block.BedBlock) {
+				return MoveHandlers.sleepIn(ctx, target);
+			}
+			return ActionManager.INSTANCE.run(ctx.villager(), new UseBlockAction(target, ctx.kingId(), ctx.config()));
+		});
 		ToolHandlers.register("break_area", (ctx, args) -> ActionManager.INSTANCE.run(ctx.villager(),
 				new BreakAreaAction(pos(args, "x1", "y1", "z1"), pos(args, "x2", "y2", "z2"), ctx.kingId(), ctx.config())));
 	}

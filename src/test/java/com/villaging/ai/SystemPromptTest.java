@@ -31,10 +31,11 @@ class SystemPromptTest {
 	}
 
 	@Test
-	void mentionsAllRegisteredTools() {
+	void namesEveryToolGroup() {
 		String p = prompt();
-		for (ToolDef tool : Tools.all()) {
-			assertTrue(p.contains(tool.name()), "missing " + tool.name());
+		for (String group : new String[] { "looking", "chests", "crafting", "farming", "fighting", "moving", "scripts",
+				"people", "building", "teams" }) {
+			assertTrue(p.contains(group), "missing group " + group);
 		}
 	}
 

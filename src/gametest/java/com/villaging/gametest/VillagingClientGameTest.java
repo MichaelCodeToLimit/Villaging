@@ -154,10 +154,14 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 			attempt("shear, milk, breed and tame work on animals", () -> animals(server));
 			attempt("fish catches something near water", () -> fishing(server));
 			attempt("attack kills a hostile creature", () -> combatAttack(server));
+			attempt("fighting: a weapon loses durability when it hits", () -> combatWeaponWears(server));
+			attempt("fighting: a weapon that breaks is reported and leaves the inventory", () -> combatBrokenWeaponIsSaid(server));
 			attempt("players and pets are never attacked or shot", () -> combatNeverHurtsPlayersOrPets(server));
 			attempt("shoot hits a target with a bow", () -> combatShoot(server));
+			attempt("fighting: an Infinity bow shoots without a false failure", () -> combatInfinityBow(server));
 			attempt("guard protects the king and spares pets, flee runs away", () -> combatGuardAndFlee(server));
 			attempt("sit stays put and sleep lies down at night and wakes at dawn", () -> sitAndSleep(server));
+			attempt("rest: using a bed at night puts the helper to sleep", () -> restUseBedAtNight(server));
 			attempt("task scripts run, fail cleanly, obey limits and stop", () -> scripts(context, server));
 			attempt("a risky step inside a script still asks the king", () -> scriptRiskyStepAsks(context, server));
 			attempt("a commander relays orders only with the king's approval", () -> commanderRelay(context, server));
@@ -175,6 +179,7 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 			attempt("blueprint planning: template, plan_build report and the ASCII view", () -> blueprintPlanning(server));
 			attempt("blueprint build: a cottage appears block by block and the materials are used up exactly", () -> blueprintBuild(context, server, 0));
 			attempt("blueprint build: a rotated build puts the door where the plan says", () -> blueprintBuild(context, server, 1));
+			attempt("blueprint build: the default speed still builds every block", () -> blueprintDefaultSpeed(server));
 			attempt("blueprint build: missing stone pauses with a message and resumes after a top-up", () -> blueprintPausesAndResumes(context, server));
 			attempt("blueprint build: occupied and protected cells are kept and reported", () -> blueprintBlockedCells(context, server));
 			attempt("blueprint build: stop pauses and a fresh start resumes without redoing blocks", () -> blueprintStopAndResume(context, server));
@@ -904,6 +909,41 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 		require(tool(server, v, "attack", "{\"entity_id\":99999}", 100).startsWith("failed"), "attacking a missing id should fail");
 	}
 
+	private void combatWeaponWears(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager v = spawnVillager(server, 0, 100, 0);
+		server.runOnServer(srv -> VillagerInventories.get(v).addItem(new ItemStack(Items.IRON_SWORD)));
+		int husk = mobId(server, "minecraft:husk", 3, 100, 0);
+		String result = tool(server, v, "attack", "{\"entity_id\":" + husk + "}", 1500);
+		require(result.startsWith("ok: killed"), "attack said " + result);
+		int worn = server.computeOnServer(srv -> {
+			VillagerInventory inventory = VillagerInventories.get(v);
+			for (int i = 0; i < inventory.getContainerSize(); i++) {
+				if (inventory.getItem(i).is(Items.IRON_SWORD)) {
+					return inventory.getItem(i).getDamageValue();
+				}
+			}
+			return -1;
+		});
+		require(worn > 0, "the sword in the helper's inventory is not worn (damage " + worn + ")");
+	}
+
+	private void combatBrokenWeaponIsSaid(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager v = spawnVillager(server, 0, 100, 0);
+		server.runOnServer(srv -> {
+			ItemStack nearlyBroken = new ItemStack(Items.WOODEN_SWORD);
+			nearlyBroken.setDamageValue(nearlyBroken.getMaxDamage() - 1);
+			VillagerInventories.get(v).addItem(nearlyBroken);
+		});
+		int husk = mobId(server, "minecraft:husk", 3, 100, 0);
+		String result = tool(server, v, "attack", "{\"entity_id\":" + husk + "}", 1500);
+		require(result.contains("broke"), "a broken weapon should be reported, attack said " + result);
+		require(villagerCount(server, v, Items.WOODEN_SWORD) == 0, "the broken sword is still in the inventory");
+	}
+
 	private void combatNeverHurtsPlayersOrPets(TestServerContext server) throws Exception {
 		resetArena(server);
 		makeKing(server);
@@ -942,6 +982,23 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 		require(villagerCount(server, v, Items.ARROW) == 3, "the arrow was not used up");
 		server.waitFor(srv -> healthOf(server, husk) < before, 200);
 		require(healthOf(server, husk) < before, "the arrow never hit the husk");
+	}
+
+	private void combatInfinityBow(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager v = spawnVillager(server, 0, 100, 0);
+		int husk = mobId(server, "minecraft:husk", 8, 100, 0);
+		server.runOnServer(srv -> {
+			ItemStack bow = new ItemStack(Items.BOW);
+			bow.enchant(srv.registryAccess().lookupOrThrow(net.minecraft.core.registries.Registries.ENCHANTMENT)
+					.getOrThrow(net.minecraft.world.item.enchantment.Enchantments.INFINITY), 1);
+			VillagerInventories.get(v).addItem(bow);
+			VillagerInventories.get(v).addItem(new ItemStack(Items.ARROW, 1));
+		});
+		String shot = tool(server, v, "shoot", "{\"entity_id\":" + husk + "}", 200);
+		require(shot.startsWith("ok: shot"), "an Infinity bow shot said " + shot);
+		require(villagerCount(server, v, Items.ARROW) == 1, "Infinity should keep the arrow, found " + villagerCount(server, v, Items.ARROW));
 	}
 
 	private void combatGuardAndFlee(TestServerContext server) throws Exception {
@@ -1004,6 +1061,26 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 		server.waitFor(srv -> !v.isSleeping(), 200);
 		require(!server.computeOnServer(srv -> v.isSleeping()), "the villager did not wake at dawn");
 		require(tool(server, v, "sleep", "{\"x\":9,\"y\":100,\"z\":9}", 100).startsWith("failed"), "sleeping with no bed should fail");
+	}
+
+	private void restUseBedAtNight(TestServerContext server) throws Exception {
+		resetArena(server);
+		makeKing(server);
+		Villager v = spawnVillager(server, 0, 100, 0);
+		server.runCommand("setblock 3 100 0 minecraft:red_bed[facing=east,part=foot]");
+		server.runCommand("setblock 4 100 0 minecraft:red_bed[facing=east,part=head]");
+		server.runCommand("time set noon");
+		waitTicks(server, 5);
+		String day = tool(server, v, "use_block", "{\"x\":3,\"y\":100,\"z\":0}", 100);
+		require(day.startsWith("failed") && day.contains("night"), "using a bed by day should say it is not night yet: " + day);
+		require(!server.computeOnServer(srv -> v.isSleeping()), "the helper slept by day");
+		server.runCommand("time set midnight");
+		server.waitFor(srv -> srv.overworld().isDarkOutside(), 60);
+		String night = tool(server, v, "use_block", "{\"x\":3,\"y\":100,\"z\":0}", 800);
+		require(night.startsWith("ok"), "use_block on a bed said " + night);
+		require(server.computeOnServer(srv -> v.isSleeping()), "the helper is not really asleep");
+		server.runCommand("time set noon");
+		server.waitFor(srv -> !v.isSleeping(), 200);
 	}
 
 	private static String scriptArgs(String script) {
@@ -1599,6 +1676,29 @@ public class VillagingClientGameTest implements FabricClientGameTest {
 			context.runOnClient(mc -> mc.gui.setScreen(null));
 		} finally {
 			deleteBlueprints(server, name);
+		}
+	}
+
+	/** The same cottage as the other build checks, but at the speed a player gets without changing any setting. */
+	private void blueprintDefaultSpeed(TestServerContext server) throws Exception {
+		Site s = blueprintSite(server, "hut9");
+		try {
+			Blueprint bp = savedBlueprint(server, "hut9");
+			stock(server, s.helper(), bp, 0);
+			VillagingConfig d = VillagingConfig.defaults();
+			VillagingConfig config = new VillagingConfig(d.provider(), d.apiKey(), d.model(), d.cloudUrl(), d.ollamaUrl(), d.ollamaModel(),
+					d.geminiModel(), d.geminiUrl(), d.maxSteps(), d.callsPerMinute(), d.actionRange(), d.respectProtection(),
+					d.allowBreakBedrock(), d.maxScriptSteps(), d.maxScriptSeconds(), d.maxScriptDepth(), "",
+					new BuildSettings(20_000, 50, d.build().buildTicksPerBlock(), 1000, 3));
+			require(planAt(server, s.helper(), "hut9", 0).contains("I have all the materials"), "plan_build did not find the materials");
+			String started = tool(server, s.helper(), config, "start_build", "{}", 100);
+			require(started.startsWith("ok: building"), "start_build said: " + started);
+			awaitBuildDone(server, s.helper(), 8000);
+			int total = BuildOrder.order(bp).size();
+			require(built(server, bp, 0) == total, "only " + built(server, bp, 0) + " of " + total + " blocks were built at the default speed");
+			require(carriedOf(server, s.helper(), bp) == 0, "the materials were not used up exactly");
+		} finally {
+			deleteBlueprints(server, "hut9");
 		}
 	}
 

@@ -23,12 +23,22 @@ final class CombatActions {
 	private CombatActions() {
 	}
 
-	/** The weapon a villager fights with: what is in its hand, else the first sword or axe it carries. */
+	/**
+	 * The weapon a villager fights with: the carried stack matching what is in its hand (the hand shows only a copy),
+	 * else the hand item itself, else the first sword or axe it carries. The stack returned is the real one, so wear
+	 * lands on what the helper owns.
+	 */
 	private static ItemStack weaponFor(PathfinderMob villager) {
-		if (!villager.getMainHandItem().isEmpty()) {
-			return villager.getMainHandItem();
-		}
 		VillagerInventory inventory = VillagerInventories.get(villager);
+		ItemStack inHand = villager.getMainHandItem();
+		if (!inHand.isEmpty()) {
+			for (int i = 0; i < inventory.getContainerSize(); i++) {
+				if (ItemStack.isSameItem(inventory.getItem(i), inHand)) {
+					return inventory.getItem(i);
+				}
+			}
+			return inHand;
+		}
 		for (int i = 0; i < inventory.getContainerSize(); i++) {
 			ItemStack stack = inventory.getItem(i);
 			if (stack.is(ItemTags.SWORDS) || stack.is(ItemTags.AXES)) {
@@ -38,15 +48,30 @@ final class CombatActions {
 		return ItemStack.EMPTY;
 	}
 
-	/** One full-strength swing at {@code target} through the villager's hands. */
-	private static void strike(PathfinderMob villager, LivingEntity target) {
+	/**
+	 * One full-strength swing at {@code target} through the villager's hands. Returns the weapon's name when it broke
+	 * on this swing, else null.
+	 */
+	private static String strike(PathfinderMob villager, LivingEntity target) {
 		VillagerHands hands = HandsManager.get(villager);
 		hands.syncFrom();
 		VillagerPlayer player = hands.player();
 		player.chargeAttack();
-		player.setItemInHand(InteractionHand.MAIN_HAND, weaponFor(villager).copy());
+		ItemStack weapon = weaponFor(villager);
+		String weaponName = weapon.isEmpty() ? "" : weapon.getHoverName().getString();
+		player.setItemInHand(InteractionHand.MAIN_HAND, weapon);
 		player.attack(target);
 		villager.swing(InteractionHand.MAIN_HAND);
+		if (!weaponName.isEmpty() && weapon.isEmpty()) {
+			villager.setItemSlot(net.minecraft.world.entity.EquipmentSlot.MAINHAND, ItemStack.EMPTY);
+			return weaponName;
+		}
+		return null;
+	}
+
+	private static int arrowsNear(ServerLevel level, PathfinderMob villager) {
+		return level.getEntitiesOfClass(net.minecraft.world.entity.projectile.arrow.AbstractArrow.class,
+				villager.getBoundingBox().inflate(4.0)).size();
 	}
 
 	private static String name(Entity e) {
@@ -95,7 +120,11 @@ final class CombatActions {
 			}
 			villager.getNavigation().stop();
 			if (ticks % SWING_INTERVAL_TICKS == 0) {
-				strike(villager, target);
+				String broken = strike(villager, target);
+				if (broken != null) {
+					String fight = "my " + broken + " broke while fighting the " + name(target);
+					return target.isAlive() ? Status.failed(fight) : Status.done("killed " + name(target) + ", but " + fight);
+				}
 			}
 			return Status.RUNNING;
 		}
@@ -163,11 +192,13 @@ final class CombatActions {
 			villager.getLookControl().setLookAt(target);
 			ItemStack bow = player.getItemInHand(InteractionHand.MAIN_HAND);
 			int arrowsBefore = inventory.count(Items.ARROW);
+			int flyingBefore = arrowsNear(level, villager);
 			bow.releaseUsing(level, player, bow.getUseDuration(player) - FULL_DRAW_TICKS);
 			hands.syncTo();
 			villager.swing(InteractionHand.MAIN_HAND);
-			return inventory.count(Items.ARROW) < arrowsBefore ? Status.done("shot an arrow at the " + name(target))
-					: Status.failed("the shot did not go off");
+			// An Infinity bow keeps its arrow, so a new arrow in the air counts as a shot too.
+			return inventory.count(Items.ARROW) < arrowsBefore || arrowsNear(level, villager) > flyingBefore
+					? Status.done("shot an arrow at the " + name(target)) : Status.failed("the shot did not go off");
 		}
 	}
 
@@ -212,7 +243,10 @@ final class CombatActions {
 				} else {
 					villager.getNavigation().stop();
 					if (ticks % SWING_INTERVAL_TICKS == 0) {
-						strike(villager, target);
+						String broken = strike(villager, target);
+						if (broken != null) {
+							VillagerSpeech.say(level.getServer(), villager, kingId, "My " + broken + " broke!");
+						}
 					}
 				}
 			} else if (king != null && villager.distanceTo(king) > COMFORT_DISTANCE) {

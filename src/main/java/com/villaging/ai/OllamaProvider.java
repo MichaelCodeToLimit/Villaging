@@ -13,6 +13,10 @@ import java.util.concurrent.atomic.AtomicLong;
 public final class OllamaProvider implements AiProvider {
 	/** Keep a local model warm between conversations without pinning it in memory indefinitely. */
 	private static final String KEEP_ALIVE = "30m";
+	/** Room for the instructions, the tool list and the conversation (Ollama's own default is much smaller). */
+	private static final int CONTEXT_TOKENS = 12288;
+	/** Only stops runaway text; a large design_blueprint plan (up to 20,000 characters) still fits. */
+	private static final int MAX_REPLY_TOKENS = 8192;
 	private final String baseUrl;
 	private final String model;
 	private final Duration timeout;
@@ -30,10 +34,24 @@ public final class OllamaProvider implements AiProvider {
 
 	@Override
 	public AiResponse complete(String system, List<ChatMessage> messages, List<ToolDef> tools) throws AiException {
+		JsonObject body = buildBody(model, system, messages, tools);
+		JsonObject response = HttpJson.post(baseUrl + "/api/chat", Map.of(), body, timeout);
+		try {
+			return parse(response);
+		} catch (RuntimeException e) {
+			throw new AiException("AI service response had an unexpected shape.", e);
+		}
+	}
+
+	static JsonObject buildBody(String model, String system, List<ChatMessage> messages, List<ToolDef> tools) {
 		JsonObject body = new JsonObject();
 		body.addProperty("model", model);
 		body.addProperty("stream", false);
 		body.addProperty("keep_alive", KEEP_ALIVE);
+		JsonObject options = new JsonObject();
+		options.addProperty("num_ctx", CONTEXT_TOKENS);
+		options.addProperty("num_predict", MAX_REPLY_TOKENS);
+		body.add("options", options);
 		JsonArray encoded = new JsonArray();
 		encoded.add(message("system", system));
 		for (ChatMessage m : messages) {
@@ -58,12 +76,7 @@ public final class OllamaProvider implements AiProvider {
 		if (!toolArray.isEmpty()) {
 			body.add("tools", toolArray);
 		}
-		JsonObject response = HttpJson.post(baseUrl + "/api/chat", Map.of(), body, timeout);
-		try {
-			return parse(response);
-		} catch (RuntimeException e) {
-			throw new AiException("AI service response had an unexpected shape.", e);
-		}
+		return body;
 	}
 
 	private static JsonObject message(String role, String content) {

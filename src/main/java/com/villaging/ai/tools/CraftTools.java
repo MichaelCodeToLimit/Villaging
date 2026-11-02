@@ -17,8 +17,7 @@ public final class CraftTools {
 
 	public static void register() {
 		Tools.register(new ToolDef("craft",
-				"Craft an item from materials in your inventory. Small recipes work anywhere; big ones need a crafting table "
-						+ "within 16 blocks. Gives at least the count asked for if you have the materials.",
+				"Craft an item from your inventory. Big recipes need a crafting table within 16 blocks.",
 				object(prop("item", "string", "Item id to make, e.g. minecraft:oak_planks."),
 						prop("count", "integer", "How many to make, 1 to " + MAX_COUNT + ".")).required("item", "count").build()),
 				(args, range, ox, oy, oz) -> {
@@ -34,8 +33,7 @@ public final class CraftTools {
 					return item.isPresent() ? item : ToolSchema.intIn(args, "count", 1, MAX_COUNT);
 				});
 		Tools.register(new ToolDef("brew",
-				"Brew potions in a brewing stand within 16 blocks: adds the ingredient to the potion bottles you carry "
-						+ "(up to 3) and blaze powder fuel if needed. Takes real time.",
+				"Brew in a brewing stand within 16 blocks: adds the ingredient to the potion bottles you carry. Takes real time.",
 				object(prop("item", "string", "Ingredient item id, e.g. minecraft:nether_wart.")).required("item").build()),
 				(args, range, ox, oy, oz) -> WorldTools.itemId(args, "item"));
 	}

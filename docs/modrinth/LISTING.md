@@ -110,6 +110,20 @@ Building, teams and a backup AI.
 - New settings in config/villaging.json: "build" (speed, ask limit, builds at once, limits) and "teams" (maxSize, default 5).
 ```
 
+## Version 1.0.4 (update)
+
+File: `build/libs/villaging-1.0.4.jar`. Same loader, game version and Fabric API dependency. Short changelog: `docs/modrinth/CHANGELOG-1.0.4.md`.
+
+```markdown
+Faster helpers and small fixes.
+- Faster answers: the instructions sent to the AI are about a quarter smaller (the helper no longer lists every tool twice), and the fixed part comes first so providers can reuse it. Ollama now gets a 12,288-token context.
+- Builds are twice as fast by default (`build.buildTicksPerBlock` is 3 now; use 6 for the old pace).
+- Slow AI calls are logged with their time and size; `-Dvillaging.debug=true` logs every call.
+- Weapons wear out when helpers fight with them, and a helper says when its weapon breaks.
+- Shooting with an Infinity bow no longer reports a false failure.
+- `use_block` on a bed at night puts the helper itself to sleep, like the sleep tool.
+```
+
 ## Before you upload (checklist)
 - [x] License: MIT everywhere (done).
 - [x] Automated checks: unit tests and the in-game suite (65 checks) pass on the release jar's code.
