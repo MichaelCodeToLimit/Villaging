@@ -210,7 +210,13 @@ public final class AgentLoop {
 			try {
 				while (true) {
 					try {
-						return answer.get(100, TimeUnit.MILLISECONDS);
+						AiResponse response = answer.get(100, TimeUnit.MILLISECONDS);
+						long millis = (System.nanoTime() - started) / 1_000_000L;
+						if (RoundTimer.shouldLog(millis)) {
+							Villaging.LOGGER.info(RoundTimer.line(RoundTimer.requestChars(system, messages, Tools.all()), millis,
+									response.toolCalls().size()));
+						}
+						return response;
 					} catch (TimeoutException stillWaiting) {
 						if (cancelled) {
 							caller.interrupt();
